@@ -105,25 +105,51 @@ This application is configured for deployment on Railway with Docker.
 - Railway CLI (optional)
 - Docker (for local testing)
 
-#### Environment Variables
+#### Step 1: Add PostgreSQL Database
 
-Set the following environment variables in Railway:
+1. Go to your Railway project dashboard
+2. Click **"+ New"** → **"Database"** → **"Add PostgreSQL"**
+3. Railway will automatically create a PostgreSQL service
+4. The `DATABASE_URL` environment variable will be automatically shared with your application service
+
+**Important:** Make sure your **application service** is connected to the PostgreSQL service:
+
+- Go to your application service → **Variables** tab
+- You should see `DATABASE_URL` listed (it's automatically shared from the PostgreSQL service)
+- If you don't see it, click **"Add Variable"** → **"Add Reference"** → Select the PostgreSQL service's `DATABASE_URL`
+
+#### Step 2: Configure Environment Variables
+
+**Railway automatically provides `DATABASE_URL`** when you add a PostgreSQL service. The application will automatically parse this and configure the database connection.
+
+**Required environment variables to set manually:**
+
+1. Go to your **application service** → **Variables** tab
+2. Add the following variable:
+   ```
+   WEBHOOK_SECRET=<your-secret-key>
+   ```
+   (Replace `<your-secret-key>` with a secure random string)
+
+**Automatic environment variables (no action needed):**
+
+- `DATABASE_URL` - Automatically provided by Railway PostgreSQL service
+- `PORT` - Automatically set by Railway
+
+**Optional environment variables:**
 
 ```bash
-# Database (provided by Railway PostgreSQL addon)
-SPRING_DATASOURCE_URL=jdbc:postgresql://${{RAILWAY_DATABASE_URL}}
-SPRING_DATASOURCE_USERNAME=${{RAILWAY_DATABASE_USER}}
-SPRING_DATASOURCE_PASSWORD=${{RAILWAY_DATABASE_PASSWORD}}
-
-# Application
-PORT=8080
-WEBHOOK_SECRET=<your-secret-key>
+PORT=8080  # Railway sets this automatically
 QUERY_RADIUS_METERS=500
 CACHE_TTL_SECONDS=600
-
-# Optional
 LOG_LEVEL=INFO
 ```
+
+**Note:** If you prefer to use Spring Boot's standard environment variables instead of `DATABASE_URL`, you can set:
+
+- `SPRING_DATASOURCE_URL`
+- `SPRING_DATASOURCE_USERNAME`
+- `SPRING_DATASOURCE_PASSWORD`
 
 #### Deploy via Railway CLI
 
