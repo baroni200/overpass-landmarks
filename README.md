@@ -131,6 +131,39 @@ This application is configured for deployment on Railway with Docker.
    ```
    (Replace `<your-secret-key>` with a secure random string)
 
+#### Step 3: Get Your Railway URL
+
+After deployment, Railway provides a public URL for your service:
+
+1. Go to your **application service** → **Settings** → **Domains**
+2. Your public URL will be listed (e.g., `your-app-name.up.railway.app`)
+3. Or check the **Overview** tab - the URL is displayed at the top
+
+#### Step 4: Test the API
+
+**Health Check** (no authentication required):
+
+```bash
+curl https://your-app-name.up.railway.app/actuator/health
+```
+
+**GET /landmarks** (no authentication required):
+
+```bash
+curl "https://your-app-name.up.railway.app/landmarks?lat=48.8584&lng=2.2945"
+```
+
+**POST /webhook** (requires Bearer token):
+
+```bash
+curl -X POST https://your-app-name.up.railway.app/webhook \
+  -H "Authorization: Bearer YOUR_WEBHOOK_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"lat":48.8584,"lng":2.2945}'
+```
+
+Replace `YOUR_WEBHOOK_SECRET` with the value you set in Railway's `WEBHOOK_SECRET` environment variable.
+
 **Automatic environment variables (no action needed):**
 
 - `DATABASE_URL` - Automatically provided by Railway PostgreSQL service
