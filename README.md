@@ -44,7 +44,7 @@ The webhook endpoint processes the entire flow synchronously:
 
 ### Cache Backend: Caffeine
 
-**Choice**: Caffeine (in-JVM cache) over Redis
+**Choice**: Caffeine over Redis
 
 **Rationale**:
 
