@@ -50,8 +50,10 @@ USER spring:spring
 EXPOSE 8080
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:${PORT:-8080}/actuator/health || exit 1
+# Railway sets PORT env var, but HEALTHCHECK doesn't expand it, so use 8080
+# Railway's own health check will override this anyway
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+  CMD curl -f http://localhost:8080/actuator/health || exit 1
 
 # Run the application with optimized JVM settings
 ENTRYPOINT ["java", \
