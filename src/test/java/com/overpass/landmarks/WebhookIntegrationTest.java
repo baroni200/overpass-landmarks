@@ -55,7 +55,14 @@ class WebhookIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.key.lat").value(48.8584))
                 .andExpect(jsonPath("$.key.lng").value(2.2945))
-                .andExpect(jsonPath("$.radiusMeters").value(500));
+                .andExpect(jsonPath("$.radiusMeters").value(500))
+                .andExpect(jsonPath("$.count").exists())
+                .andExpect(jsonPath("$.landmarks").isArray())
+                .andExpect(jsonPath("$.landmarks").isNotEmpty())
+                .andExpect(jsonPath("$.landmarks[0].name").exists())
+                .andExpect(jsonPath("$.landmarks[0].lat").exists())
+                .andExpect(jsonPath("$.landmarks[0].lng").exists())
+                .andExpect(jsonPath("$.landmarks[0].tags").exists());
     }
 
     @Test
@@ -142,21 +149,23 @@ class WebhookIntegrationTest {
         String requestJson = objectMapper.writeValueAsString(request);
 
         // First call
-        mockMvc.perform(post("/webhook")
+        String firstResponse = mockMvc.perform(post("/webhook")
                 .header("Authorization", "Bearer " + WEBHOOK_SECRET)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.landmarks").isArray())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
         // Second call with same coordinates
-        mockMvc.perform(post("/webhook")
+        String secondResponse = mockMvc.perform(post("/webhook")
                 .header("Authorization", "Bearer " + WEBHOOK_SECRET)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.landmarks").isArray())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -164,6 +173,10 @@ class WebhookIntegrationTest {
         // Verify only one coordinate request exists
         long count = coordinateRequestRepository.count();
         assertThat(count).isEqualTo(1);
+
+        // Verify both responses contain landmarks
+        assertThat(firstResponse).contains("\"landmarks\"");
+        assertThat(secondResponse).contains("\"landmarks\"");
     }
 
     @Test

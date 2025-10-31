@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Getter
 @Setter
@@ -23,6 +24,9 @@ public class WebhookResponseDto {
     @JsonProperty("radiusMeters")
     private Integer radiusMeters;
 
+    @JsonProperty("landmarks")
+    private List<LandmarkResponseDto> landmarks;
+
     @Getter
     @Setter
     @NoArgsConstructor
@@ -35,4 +39,3 @@ public class WebhookResponseDto {
         private BigDecimal lng;
     }
 }
-

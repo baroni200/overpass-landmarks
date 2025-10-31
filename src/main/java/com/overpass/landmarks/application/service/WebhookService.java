@@ -83,7 +83,10 @@ public class WebhookService {
       // Populate cache
       populateCache(transformed, landmarks, queryRadiusMeters);
 
-      return buildResponse(transformed, landmarks.size(), queryRadiusMeters);
+      List<LandmarkResponseDto> landmarkDtos = landmarks.stream()
+          .map(this::toDto)
+          .toList();
+      return buildResponse(transformed, landmarks.size(), queryRadiusMeters, landmarkDtos);
     }
 
     // Step 3: Query Overpass API
@@ -145,7 +148,10 @@ public class WebhookService {
     // Step 6: Write-through cache
     populateCache(transformed, landmarks, queryRadiusMeters);
 
-    return buildResponse(transformed, landmarks.size(), queryRadiusMeters);
+    List<LandmarkResponseDto> landmarkDtos = landmarks.stream()
+        .map(this::toDto)
+        .toList();
+    return buildResponse(transformed, landmarks.size(), queryRadiusMeters, landmarkDtos);
   }
 
   /**
@@ -159,11 +165,12 @@ public class WebhookService {
         .toList();
   }
 
-  private WebhookResponseDto buildResponse(TransformedCoordinates transformed, int count, int radiusMeters) {
+  private WebhookResponseDto buildResponse(TransformedCoordinates transformed, int count, int radiusMeters,
+      List<LandmarkResponseDto> landmarks) {
     WebhookResponseDto.KeyDto key = new WebhookResponseDto.KeyDto(
         transformed.getLat(),
         transformed.getLng());
-    return new WebhookResponseDto(key, count, radiusMeters);
+    return new WebhookResponseDto(key, count, radiusMeters, landmarks);
   }
 
   private LandmarkResponseDto toDto(Landmark landmark) {
