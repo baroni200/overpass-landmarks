@@ -44,6 +44,16 @@ management:
       show-details: always
       probes:
         enabled: true
+      groups:
+        readiness:
+          include: readinessState,db
+        liveness:
+          include: livenessState
+  health:
+    db:
+      enabled: true
+    diskspace:
+      enabled: false
 
 app:
   webhook:
@@ -56,6 +66,9 @@ app:
 logging:
   level:
     root: INFO
-    com.overpass.landmarks: DEBUG
+    com.overpass.landmarks: INFO
+    org.springframework.boot: INFO
+    org.springframework.web: INFO
+    org.flywaydb: INFO
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
