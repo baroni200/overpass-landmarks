@@ -5,9 +5,7 @@ import com.overpass.landmarks.application.dto.WebhookRequestDto;
 import com.overpass.landmarks.domain.model.CoordinateRequest;
 import com.overpass.landmarks.domain.model.RequestStatus;
 import com.overpass.landmarks.domain.repository.CoordinateRequestRepository;
-import com.overpass.landmarks.domain.repository.LandmarkRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -18,7 +16,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -39,9 +36,6 @@ class WebhookIntegrationTest {
 
     @Autowired
     private CoordinateRequestRepository coordinateRequestRepository;
-
-    @Autowired
-    private LandmarkRepository landmarkRepository;
 
     @Autowired
     private org.springframework.cache.CacheManager cacheManager;
@@ -148,7 +142,7 @@ class WebhookIntegrationTest {
         String requestJson = objectMapper.writeValueAsString(request);
 
         // First call
-        String firstResponse = mockMvc.perform(post("/webhook")
+        mockMvc.perform(post("/webhook")
                 .header("Authorization", "Bearer " + WEBHOOK_SECRET)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
@@ -158,7 +152,7 @@ class WebhookIntegrationTest {
                 .getContentAsString();
 
         // Second call with same coordinates
-        String secondResponse = mockMvc.perform(post("/webhook")
+        mockMvc.perform(post("/webhook")
                 .header("Authorization", "Bearer " + WEBHOOK_SECRET)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
