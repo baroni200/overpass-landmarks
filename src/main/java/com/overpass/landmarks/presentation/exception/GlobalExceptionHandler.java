@@ -11,11 +11,13 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Global exception handler providing consistent JSON error responses.
+ * Uses modern Spring Boot 3.5 patterns with structured error responses.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -26,15 +28,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleValidationException(MethodArgumentNotValidException ex) {
         logger.debug("Validation error", ex);
         
-        Map<String, Object> error = new HashMap<>();
+        Map<String, Object> error = new LinkedHashMap<>();
         error.put("error", "VALIDATION_ERROR");
-        
-        Map<String, String> fieldErrors = new HashMap<>();
-        ex.getBindingResult().getFieldErrors().forEach(fieldError -> {
-            fieldErrors.put(fieldError.getField(), fieldError.getDefaultMessage());
-        });
-        error.put("fieldErrors", fieldErrors);
         error.put("message", "Validation failed");
+        
+        // Use modern Stream API with collectors
+        Map<String, String> fieldErrors = ex.getBindingResult().getFieldErrors().stream()
+            .collect(Collectors.toMap(
+                org.springframework.validation.FieldError::getField,
+                org.springframework.validation.FieldError::getDefaultMessage,
+                (existing, replacement) -> existing, // Keep first message on duplicate
+                LinkedHashMap::new // Preserve order
+            ));
+        error.put("fieldErrors", fieldErrors);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
@@ -43,7 +49,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleTypeMismatchException(MethodArgumentTypeMismatchException ex) {
         logger.debug("Type mismatch error", ex);
         
-        Map<String, Object> error = new HashMap<>();
+        Map<String, Object> error = new LinkedHashMap<>();
         error.put("error", "INVALID_PARAMETER");
         error.put("message", "Invalid parameter type: " + ex.getName());
         error.put("parameter", ex.getName());
@@ -56,7 +62,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(IllegalArgumentException ex) {
         logger.debug("Illegal argument error", ex);
         
-        Map<String, Object> error = new HashMap<>();
+        Map<String, Object> error = new LinkedHashMap<>();
         error.put("error", "INVALID_INPUT");
         error.put("message", ex.getMessage());
 
@@ -67,7 +73,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleOverpassException(OverpassClient.OverpassException ex) {
         logger.error("Overpass API error", ex);
         
-        Map<String, Object> error = new HashMap<>();
+        Map<String, Object> error = new LinkedHashMap<>();
         error.put("error", "OVERPASS_ERROR");
         error.put("message", ex.getMessage());
 
@@ -78,7 +84,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleWebhookProcessingException(WebhookService.WebhookProcessingException ex) {
         logger.error("Webhook processing error", ex);
         
-        Map<String, Object> error = new HashMap<>();
+        Map<String, Object> error = new LinkedHashMap<>();
         error.put("error", "WEBHOOK_PROCESSING_ERROR");
         error.put("message", ex.getMessage());
 
@@ -89,7 +95,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
         logger.error("Unexpected error", ex);
         
-        Map<String, Object> error = new HashMap<>();
+        Map<String, Object> error = new LinkedHashMap<>();
         error.put("error", "INTERNAL_ERROR");
         error.put("message", "An unexpected error occurred");
 

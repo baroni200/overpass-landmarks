@@ -4,9 +4,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -15,7 +12,6 @@ import java.util.UUID;
 @Table(name = "coordinate_request", indexes = {
     @Index(name = "idx_coordinate_request_key", columnList = "key_lat,key_lng,radius_m", unique = true)
 })
-@EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -41,11 +37,9 @@ public class CoordinateRequest {
     @Column(name = "error_message", length = 1000)
     private String errorMessage;
 
-    @CreatedDate
-    @Column(name = "requested_at", nullable = false, updatable = false)
+    @Column(name = "requested_at", nullable = false)
     private OffsetDateTime requestedAt;
 
-    @LastModifiedDate
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 
@@ -55,6 +49,31 @@ public class CoordinateRequest {
         this.keyLng = keyLng;
         this.radiusMeters = radiusMeters;
         this.status = RequestStatus.FOUND;
+        // Set timestamps in constructor to ensure they're always set
+        this.requestedAt = OffsetDateTime.now();
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    /**
+     * Pre-persist callback to ensure timestamps are set if auditing doesn't handle it.
+     * This is a fallback for test environments where auditing may not work correctly.
+     */
+    @PrePersist
+    protected void onCreate() {
+        if (requestedAt == null) {
+            requestedAt = OffsetDateTime.now();
+        }
+        if (updatedAt == null) {
+            updatedAt = OffsetDateTime.now();
+        }
+    }
+
+    /**
+     * Pre-update callback to update the modified timestamp.
+     */
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = OffsetDateTime.now();
     }
 }
 

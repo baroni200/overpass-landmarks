@@ -2,7 +2,6 @@ package com.overpass.landmarks;
 
 import com.overpass.landmarks.application.dto.LandmarksQueryResponseDto;
 import com.overpass.landmarks.application.dto.WebhookRequestDto;
-import com.overpass.landmarks.application.dto.WebhookResponseDto;
 import com.overpass.landmarks.domain.model.CoordinateRequest;
 import com.overpass.landmarks.domain.model.RequestStatus;
 import com.overpass.landmarks.domain.repository.CoordinateRequestRepository;
@@ -11,16 +10,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureWebMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.context.WebApplicationContext;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -28,13 +26,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
-@AutoConfigureWebMvc
-@ActiveProfiles("local")
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
 @Transactional
 class WebhookIntegrationTest {
 
     @Autowired
-    private WebApplicationContext webApplicationContext;
+    private MockMvc mockMvc;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -45,98 +43,89 @@ class WebhookIntegrationTest {
     @Autowired
     private LandmarkRepository landmarkRepository;
 
-    private MockMvc mockMvc;
     private static final String WEBHOOK_SECRET = "supersecret";
-
-    @BeforeEach
-    void setUp() {
-        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
-    }
 
     @Test
     void testWebhook_ValidRequest_Returns200() throws Exception {
         WebhookRequestDto request = new WebhookRequestDto(
-            new BigDecimal("48.8584"),
-            new BigDecimal("2.2945")
-        );
+                new BigDecimal("48.8584"),
+                new BigDecimal("2.2945"));
 
         mockMvc.perform(post("/webhook")
                 .header("Authorization", "Bearer " + WEBHOOK_SECRET)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.key.lat").value(48.8584))
-            .andExpect(jsonPath("$.key.lng").value(2.2945))
-            .andExpect(jsonPath("$.radiusMeters").value(500));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.key.lat").value(48.8584))
+                .andExpect(jsonPath("$.key.lng").value(2.2945))
+                .andExpect(jsonPath("$.radiusMeters").value(500));
     }
 
     @Test
     void testWebhook_MissingAuth_Returns401() throws Exception {
         WebhookRequestDto request = new WebhookRequestDto(
-            new BigDecimal("48.8584"),
-            new BigDecimal("2.2945")
-        );
+                new BigDecimal("48.8584"),
+                new BigDecimal("2.2945"));
 
         mockMvc.perform(post("/webhook")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     void testWebhook_InvalidToken_Returns401() throws Exception {
         WebhookRequestDto request = new WebhookRequestDto(
-            new BigDecimal("48.8584"),
-            new BigDecimal("2.2945")
-        );
+                new BigDecimal("48.8584"),
+                new BigDecimal("2.2945"));
 
         mockMvc.perform(post("/webhook")
                 .header("Authorization", "Bearer invalid")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     void testWebhook_InvalidCoordinates_Returns400() throws Exception {
         WebhookRequestDto request = new WebhookRequestDto(
-            new BigDecimal("123.0"), // Invalid latitude
-            new BigDecimal("2.2945")
-        );
+                new BigDecimal("123.0"), // Invalid latitude
+                new BigDecimal("2.2945"));
 
         mockMvc.perform(post("/webhook")
                 .header("Authorization", "Bearer " + WEBHOOK_SECRET)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     void testLandmarks_ValidRequest_Returns200() throws Exception {
-        // First, create a coordinate request
+        // First, create a coordinate request (use different coordinates to avoid
+        // conflict with seed data)
         CoordinateRequest coordinateRequest = new CoordinateRequest(
-            new BigDecimal("48.8584"),
-            new BigDecimal("2.2945"),
-            500
-        );
+                new BigDecimal("40.7128"), // New York coordinates (different from seed data)
+                new BigDecimal("-74.0060"),
+                500);
         coordinateRequest.setStatus(RequestStatus.FOUND);
-        coordinateRequest = coordinateRequestRepository.save(coordinateRequest);
+        // Timestamps will be set automatically by @PrePersist callback
+        coordinateRequest = coordinateRequestRepository.saveAndFlush(coordinateRequest);
 
         mockMvc.perform(get("/landmarks")
-                .param("lat", "48.8584")
-                .param("lng", "2.2945"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.key.lat").value(48.8584))
-            .andExpect(jsonPath("$.key.lng").value(2.2945))
-            .andExpect(jsonPath("$.key.radiusMeters").value(500))
-            .andExpect(jsonPath("$.landmarks").isArray());
+                .param("lat", "40.7128")
+                .param("lng", "-74.0060"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.key.lat").value(40.7128))
+                .andExpect(jsonPath("$.key.lng").value(-74.0060))
+                .andExpect(jsonPath("$.key.radiusMeters").value(500))
+                .andExpect(jsonPath("$.landmarks").isArray());
     }
 
     @Test
     void testLandmarks_MissingLat_Returns400() throws Exception {
         mockMvc.perform(get("/landmarks")
                 .param("lng", "2.2945"))
-            .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -144,15 +133,14 @@ class WebhookIntegrationTest {
         mockMvc.perform(get("/landmarks")
                 .param("lat", "123")
                 .param("lng", "2.2945"))
-            .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     void testIdempotency_DuplicateWebhook_ReturnsExistingResult() throws Exception {
         WebhookRequestDto request = new WebhookRequestDto(
-            new BigDecimal("48.8584"),
-            new BigDecimal("2.2945")
-        );
+                new BigDecimal("48.8584"),
+                new BigDecimal("2.2945"));
 
         String requestJson = objectMapper.writeValueAsString(request);
 
@@ -161,20 +149,20 @@ class WebhookIntegrationTest {
                 .header("Authorization", "Bearer " + WEBHOOK_SECRET)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
 
         // Second call with same coordinates
         String secondResponse = mockMvc.perform(post("/webhook")
                 .header("Authorization", "Bearer " + WEBHOOK_SECRET)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
 
         // Verify only one coordinate request exists
         long count = coordinateRequestRepository.count();
@@ -183,38 +171,39 @@ class WebhookIntegrationTest {
 
     @Test
     void testCacheBehavior_FirstGetFromDb_SecondGetFromCache() throws Exception {
-        // Create a coordinate request with landmarks
+        // Create a coordinate request with landmarks (use different coordinates to
+        // avoid conflict with seed data)
         CoordinateRequest coordinateRequest = new CoordinateRequest(
-            new BigDecimal("48.8584"),
-            new BigDecimal("2.2945"),
-            500
-        );
+                new BigDecimal("40.7128"), // New York coordinates (different from seed data)
+                new BigDecimal("-74.0060"),
+                500);
         coordinateRequest.setStatus(RequestStatus.FOUND);
-        coordinateRequest = coordinateRequestRepository.save(coordinateRequest);
+        // Timestamps will be set automatically by @PrePersist callback
+        coordinateRequest = coordinateRequestRepository.saveAndFlush(coordinateRequest);
 
         // First GET - should return from DB
         String firstResponse = mockMvc.perform(get("/landmarks")
-                .param("lat", "48.8584")
-                .param("lng", "2.2945"))
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
+                .param("lat", "40.7128")
+                .param("lng", "-74.0060"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
 
         LandmarksQueryResponseDto firstResult = objectMapper.readValue(firstResponse, LandmarksQueryResponseDto.class);
         assertThat(firstResult.getSource()).isEqualTo("db");
 
         // Second GET - should return from cache
         String secondResponse = mockMvc.perform(get("/landmarks")
-                .param("lat", "48.8584")
-                .param("lng", "2.2945"))
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
+                .param("lat", "40.7128")
+                .param("lng", "-74.0060"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
 
-        LandmarksQueryResponseDto secondResult = objectMapper.readValue(secondResponse, LandmarksQueryResponseDto.class);
+        LandmarksQueryResponseDto secondResult = objectMapper.readValue(secondResponse,
+                LandmarksQueryResponseDto.class);
         assertThat(secondResult.getSource()).isEqualTo("cache");
     }
 }
-

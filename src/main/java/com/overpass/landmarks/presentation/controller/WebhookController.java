@@ -4,12 +4,8 @@ import com.overpass.landmarks.application.dto.WebhookRequestDto;
 import com.overpass.landmarks.application.dto.WebhookResponseDto;
 import com.overpass.landmarks.application.service.WebhookService;
 import jakarta.validation.Valid;
-
-import java.math.BigDecimal;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -42,14 +38,8 @@ public class WebhookController {
      */
     @PostMapping
     public ResponseEntity<WebhookResponseDto> handleWebhook(@Valid @RequestBody WebhookRequestDto request) {
-        logger.info("Received webhook request: lat={}, lng={}", request.getLatitude(), request.getLongitude());
-
-        try {
-            WebhookResponseDto response = webhookService.processWebhook(request.getLatitude(), request.getLongitude());
-            return ResponseEntity.status(HttpStatus.OK).body(response);
-        } catch (WebhookService.WebhookProcessingException e) {
-            logger.error("Webhook processing failed", e);
-            throw e; // Let GlobalExceptionHandler handle it
-        }
+        logger.info("Received webhook request: lat={}, lng={}", request.getLat(), request.getLng());
+        WebhookResponseDto response = webhookService.processWebhook(request.getLat(), request.getLng());
+        return ResponseEntity.ok(response);
     }
 }

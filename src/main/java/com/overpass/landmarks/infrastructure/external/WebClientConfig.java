@@ -1,22 +1,23 @@
 package com.overpass.landmarks.infrastructure.external;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.codec.json.Jackson2JsonDecoder;
-import org.springframework.http.codec.json.Jackson2JsonEncoder;
 import org.springframework.web.reactive.function.client.WebClient;
 
+/**
+ * WebClient configuration.
+ * 
+ * In Spring Boot 3.x, Jackson codecs are automatically configured,
+ * so explicit codec configuration is not needed.
+ */
 @Configuration
 public class WebClientConfig {
 
     @Bean
-    public WebClient.Builder webClientBuilder(ObjectMapper objectMapper) {
-        return WebClient.builder()
-            .codecs(configurer -> {
-                configurer.defaultCodecs().jackson2JsonEncoder(new Jackson2JsonEncoder(objectMapper));
-                configurer.defaultCodecs().jackson2JsonDecoder(new Jackson2JsonDecoder(objectMapper));
-            });
+    public WebClient.Builder webClientBuilder() {
+        // Spring Boot auto-configures Jackson codecs for WebClient
+        // No need to manually configure Jackson2JsonEncoder/Decoder
+        return WebClient.builder();
     }
 }
 

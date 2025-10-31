@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.CachePut;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -71,11 +70,16 @@ public class LandmarkQueryService {
         Cache cache = cacheManager.getCache("landmarks");
         if (cache != null) {
             Cache.ValueWrapper wrapper = cache.get(cacheKey);
-            if (wrapper != null && wrapper.get() != null) {
-                @SuppressWarnings("unchecked")
-                List<LandmarkResponseDto> cachedLandmarks = (List<LandmarkResponseDto>) wrapper.get();
-                logger.debug("Cache hit for key: {}", cacheKey);
-                return buildResponse(transformed, cachedLandmarks, "cache");
+            if (wrapper != null) {
+                Object cachedValue = wrapper.get();
+                if (cachedValue instanceof List<?> cachedList) {
+                    // Type-safe casting with pattern matching (Java 16+)
+                    @SuppressWarnings("unchecked")
+                    List<LandmarkResponseDto> cachedLandmarks = 
+                        (List<LandmarkResponseDto>) cachedList;
+                    logger.debug("Cache hit for key: {}", cacheKey);
+                    return buildResponse(transformed, cachedLandmarks, "cache");
+                }
             }
         }
         logger.debug("Cache miss for key: {}", cacheKey);
@@ -108,9 +112,13 @@ public class LandmarkQueryService {
     /**
      * Populate cache (write-through on GET).
      */
-    @CachePut(value = "landmarks", key = "#transformed.lat.toString() + ':' + #transformed.lng.toString() + ':' + #queryRadiusMeters")
-    private List<LandmarkResponseDto> populateCache(TransformedCoordinates transformed, List<LandmarkResponseDto> landmarks, int queryRadiusMeters) {
-        return landmarks;
+    private void populateCache(TransformedCoordinates transformed, List<LandmarkResponseDto> landmarks, int queryRadiusMeters) {
+        Cache cache = cacheManager.getCache("landmarks");
+        if (cache != null) {
+            String cacheKey = buildCacheKey(transformed);
+            cache.put(cacheKey, landmarks);
+            logger.debug("Cache populated for key: {}", cacheKey);
+        }
     }
 
     /**

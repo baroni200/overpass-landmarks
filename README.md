@@ -14,7 +14,7 @@ This service follows **Domain-Driven Design (DDD)** principles with clear separa
 ### Technology Stack
 
 - **Language**: Java 22
-- **Framework**: Spring Boot 3.3.0
+- **Framework**: Spring Boot 3.5.7
 - **Database**: PostgreSQL 14+ (Spring Data JPA)
 - **Cache**: Caffeine (in-JVM cache)
 - **Migrations**: Flyway
@@ -28,12 +28,14 @@ This service follows **Domain-Driven Design (DDD)** principles with clear separa
 **Choice**: Synchronous webhook processing
 
 **Rationale**:
+
 - Simpler implementation for coding challenge
 - Immediate feedback to webhook sender
 - Overpass API typically responds within seconds
 - Can be upgraded to async if needed for production (using Spring @Async or message queues)
 
 The webhook endpoint processes the entire flow synchronously:
+
 1. Transform coordinates
 2. Query Overpass API
 3. Persist to database
@@ -45,6 +47,7 @@ The webhook endpoint processes the entire flow synchronously:
 **Choice**: Caffeine (in-JVM cache) over Redis
 
 **Rationale**:
+
 - Simpler setup (no external dependency)
 - Good performance for single-instance deployments
 - Zero configuration overhead
@@ -53,6 +56,7 @@ The webhook endpoint processes the entire flow synchronously:
 **Note**: For production multi-instance deployments, Redis would be preferred for shared cache across instances.
 
 **Configuration**:
+
 - Maximum size: 10,000 entries
 - TTL: 600 seconds (configurable via `CACHE_TTL_SECONDS` env var)
 - Cache key format: `{lat}:{lng}:{radius}`
@@ -62,16 +66,19 @@ The webhook endpoint processes the entire flow synchronously:
 **Choice**: Round latitude/longitude to 4 decimal places (~11m precision)
 
 **Rationale**:
+
 - Provides ~11 meter precision, which is suitable for landmark queries
 - Deterministic and consistent for idempotency
 - Simple to implement and understand
 - Ensures nearby coordinates map to the same cache key
 
 **Example**:
+
 - Input: `48.8584123, 2.2944812`
 - Transformed: `48.8584, 2.2945`
 
 This transformation ensures:
+
 - Idempotency: Same coordinates produce same results
 - Cache efficiency: Nearby coordinates share cache entries
 - Deduplication: Prevents duplicate work for similar coordinates
@@ -81,6 +88,7 @@ This transformation ensures:
 **Approach**: Unique constraint on `(key_lat, key_lng, radius_m)` in the database
 
 **Implementation**:
+
 - Transformed coordinates create a stable key
 - Database unique constraint prevents duplicate requests
 - If a request with the same transformed key already exists, returns existing result without querying Overpass again
@@ -102,6 +110,7 @@ docker-compose up -d
 ```
 
 This will start PostgreSQL on port 5432 with:
+
 - Database: `overpass`
 - Username: `postgres`
 - Password: `postgres`
@@ -127,9 +136,37 @@ CACHE_TTL_SECONDS=600
 ```
 
 The application will:
-- Run Flyway migrations automatically on startup
+
+- Run Flyway migrations automatically on startup (including seed data migration)
 - Start on port 8080 (configurable via `PORT` env var)
 - Expose health check at `/actuator/health`
+
+### 4. Seed Data
+
+The project includes two types of seed data:
+
+#### Flyway Seed Data (V3\_\_seed_data.sql)
+
+- **Automatically loaded** on startup via Flyway migration
+- Contains reference data: Eiffel Tower coordinates with sample landmarks
+- Idempotent: Uses `ON CONFLICT DO NOTHING` to prevent duplicates
+- Available in all environments
+
+#### Java-Based Seed Data (DataSeeder)
+
+- **Enabled by default** when using `local` profile: `./gradlew bootRun --args='--spring.profiles.active=local'`
+- Adds additional test data: Notre-Dame coordinates with sample landmark
+- Controlled by `app.seeding.enabled=true` property (enabled in `application-local.yml`)
+- Only runs in local development environments
+
+**Seed Data Contents:**
+
+- **Flyway Seed:**
+  - Coordinate Request: Eiffel Tower (48.8584, 2.2945) with 2 landmarks
+- **Java Seeder:**
+  - Coordinate Request: Notre-Dame de Paris (48.8530, 2.3499) with 1 landmark
+
+To disable Java seeding, set `app.seeding.enabled=false` in your configuration.
 
 ## API Endpoints
 
@@ -140,6 +177,7 @@ Protected endpoint that receives coordinates, queries Overpass API, and stores r
 **Authentication**: Bearer token via `Authorization` header
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8080/webhook \
   -H "Authorization: Bearer supersecret" \
@@ -148,6 +186,7 @@ curl -X POST http://localhost:8080/webhook \
 ```
 
 **Response** (200 OK):
+
 ```json
 {
   "key": {
@@ -160,6 +199,7 @@ curl -X POST http://localhost:8080/webhook \
 ```
 
 **Error Responses**:
+
 - `400 Bad Request`: Invalid coordinates (outside valid ranges)
 - `401 Unauthorized`: Missing or invalid Authorization token
 - `502 Bad Gateway`: Overpass API error
@@ -170,11 +210,13 @@ curl -X POST http://localhost:8080/webhook \
 Query landmarks by coordinates. Uses cache-first strategy with database fallback.
 
 **Request**:
+
 ```bash
 curl "http://localhost:8080/landmarks?lat=48.8584&lng=2.2945"
 ```
 
 **Response** (200 OK):
+
 ```json
 {
   "key": {
@@ -201,6 +243,7 @@ curl "http://localhost:8080/landmarks?lat=48.8584&lng=2.2945"
 ```
 
 **Source Field**:
+
 - `cache`: Retrieved from cache
 - `db`: Retrieved from database (cache miss)
 - `none`: No data found
@@ -210,6 +253,7 @@ curl "http://localhost:8080/landmarks?lat=48.8584&lng=2.2945"
 ### Manual Testing
 
 1. **Test Webhook** (first call should query Overpass):
+
 ```bash
 curl -X POST http://localhost:8080/webhook \
   -H "Authorization: Bearer supersecret" \
@@ -218,11 +262,13 @@ curl -X POST http://localhost:8080/webhook \
 ```
 
 2. **Test Landmarks Retrieval** (should return from cache):
+
 ```bash
 curl "http://localhost:8080/landmarks?lat=48.8584&lng=2.2945"
 ```
 
 3. **Test Idempotency** (second webhook call should return immediately without querying Overpass):
+
 ```bash
 curl -X POST http://localhost:8080/webhook \
   -H "Authorization: Bearer supersecret" \
@@ -244,6 +290,7 @@ Run integration tests:
 ```
 
 Tests cover:
+
 - Webhook endpoint (happy path, validation, auth)
 - Landmarks retrieval (cache hit, cache miss, empty results)
 - Idempotency verification
@@ -309,6 +356,7 @@ All errors return consistent JSON format:
 ```
 
 **Error Codes**:
+
 - `VALIDATION_ERROR`: Request validation failed
 - `INVALID_PARAMETER`: Invalid parameter type
 - `UNAUTHORIZED`: Missing or invalid authentication

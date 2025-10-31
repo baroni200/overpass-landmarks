@@ -6,7 +6,7 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/overpass}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
-    driver-class-name: org.postgresql.Driver
+    # Driver class is auto-detected from URL in Spring Boot 3.x
     hikari:
       maximum-pool-size: 10
       minimum-idle: 5
@@ -16,7 +16,7 @@ spring:
       ddl-auto: validate
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+        # Dialect is auto-detected from datasource in Hibernate 6.x
         format_sql: true
     show-sql: false
   

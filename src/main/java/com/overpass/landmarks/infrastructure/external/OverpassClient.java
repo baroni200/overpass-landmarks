@@ -2,17 +2,14 @@ package com.overpass.landmarks.infrastructure.external;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.overpass.landmarks.domain.model.Landmark;
 import com.overpass.landmarks.domain.model.OsmType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
-import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 
 import java.math.BigDecimal;
@@ -32,28 +29,26 @@ public class OverpassClient {
     private static final Logger logger = LoggerFactory.getLogger(OverpassClient.class);
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
-    private final String apiUrl;
     private final int timeoutSeconds;
 
     public OverpassClient(
-        WebClient.Builder webClientBuilder,
-        ObjectMapper objectMapper,
-        @Value("${app.overpass.api-url}") String apiUrl,
-        @Value("${app.overpass.timeout-seconds:30}") int timeoutSeconds
-    ) {
+            WebClient.Builder webClientBuilder,
+            ObjectMapper objectMapper,
+            @Value("${app.overpass.api-url}") String apiUrl,
+            @Value("${app.overpass.timeout-seconds:30}") int timeoutSeconds) {
         this.objectMapper = objectMapper;
-        this.apiUrl = apiUrl;
         this.timeoutSeconds = timeoutSeconds;
+        // Spring Boot auto-configures Jackson codecs, so we just need baseUrl
         this.webClient = webClientBuilder
-            .baseUrl(apiUrl)
-            .build();
+                .baseUrl(apiUrl)
+                .build();
     }
 
     /**
      * Query Overpass API for landmarks near the given coordinates.
      * 
-     * @param lat Latitude
-     * @param lng Longitude
+     * @param lat          Latitude
+     * @param lng          Longitude
      * @param radiusMeters Search radius in meters
      * @return List of landmarks found
      * @throws OverpassException if the API call fails or times out
@@ -64,14 +59,15 @@ public class OverpassClient {
 
         try {
             String responseBody = webClient.post()
-                .uri("/interpreter")
-                .bodyValue(query)
-                .retrieve()
-                .bodyToMono(String.class)
-                .timeout(Duration.ofSeconds(timeoutSeconds))
-                .retryWhen(Retry.fixedDelay(2, Duration.ofSeconds(1))
-                    .filter(throwable -> throwable instanceof WebClientException))
-                .block();
+                    .uri("/interpreter")
+                    .bodyValue(query)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(timeoutSeconds))
+                    .retryWhen(Retry.backoff(2, Duration.ofSeconds(1))
+                            .filter(throwable -> throwable instanceof WebClientException))
+                    .doOnError(error -> logger.debug("Overpass API call failed, will retry if applicable", error))
+                    .block();
 
             return parseResponse(responseBody);
         } catch (WebClientResponseException e) {
@@ -91,15 +87,14 @@ public class OverpassClient {
      */
     private String buildQuery(BigDecimal lat, BigDecimal lng, int radiusMeters) {
         return String.format(
-            "[out:json];" +
-            "(" +
-            "  way[\"tourism\"=\"attraction\"](around:%d,%.6f,%.6f);" +
-            "  relation[\"tourism\"=\"attraction\"](around:%d,%.6f,%.6f);" +
-            ");" +
-            "out center;",
-            radiusMeters, lat.doubleValue(), lng.doubleValue(),
-            radiusMeters, lat.doubleValue(), lng.doubleValue()
-        );
+                "[out:json];" +
+                        "(" +
+                        "  way[\"tourism\"=\"attraction\"](around:%d,%.6f,%.6f);" +
+                        "  relation[\"tourism\"=\"attraction\"](around:%d,%.6f,%.6f);" +
+                        ");" +
+                        "out center;",
+                radiusMeters, lat.doubleValue(), lng.doubleValue(),
+                radiusMeters, lat.doubleValue(), lng.doubleValue());
     }
 
     /**
@@ -109,7 +104,7 @@ public class OverpassClient {
         try {
             JsonNode root = objectMapper.readTree(responseBody);
             JsonNode elements = root.get("elements");
-            
+
             if (elements == null || !elements.isArray()) {
                 logger.warn("Overpass response missing elements array");
                 return List.of();
@@ -141,7 +136,7 @@ public class OverpassClient {
     private OverpassLandmark parseElement(JsonNode element) {
         String type = element.get("type").asText();
         Long osmId = element.get("id").asLong();
-        
+
         // Get center coordinates (preferred) or fallback to lat/lng
         BigDecimal lat, lng;
         JsonNode center = element.get("center");
@@ -157,11 +152,21 @@ public class OverpassClient {
         JsonNode tags = element.get("tags");
         String name = null;
         Map<String, Object> tagMap = new HashMap<>();
-        
+
         if (tags != null) {
             name = tags.has("name") ? tags.get("name").asText() : null;
-            tags.fields().forEachRemaining(entry -> {
-                tagMap.put(entry.getKey(), entry.getValue().asText());
+            // Use modern Jackson API - iterate over field names instead of deprecated
+            // fields()
+            tags.fieldNames().forEachRemaining(fieldName -> {
+                JsonNode value = tags.get(fieldName);
+                // Preserve value type - text for strings, convert others appropriately
+                if (value.isTextual()) {
+                    tagMap.put(fieldName, value.asText());
+                } else if (value.isNumber()) {
+                    tagMap.put(fieldName, value.asText()); // Convert numbers to string for consistency
+                } else {
+                    tagMap.put(fieldName, value.asText());
+                }
             });
         }
 
@@ -209,4 +214,3 @@ public class OverpassClient {
         }
     }
 }
-

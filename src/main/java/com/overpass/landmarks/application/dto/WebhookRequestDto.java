@@ -1,31 +1,45 @@
 package com.overpass.landmarks.application.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import jakarta.validation.constraints.DecimalMax;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.EqualsAndHashCode;
 
-import java.math.BigDecimal;
+/**
+ * DTO for webhook request body.
+ * Extends CoordinatesDto to reuse coordinate validation.
+ * Uses @JsonProperty to map JSON field names.
+ */
+@EqualsAndHashCode(callSuper = true)
+public class WebhookRequestDto extends CoordinatesDto {
 
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-public class WebhookRequestDto {
+    public WebhookRequestDto() {
+        super();
+    }
 
-    @NotNull(message = "Latitude is required")
-    @DecimalMin(value = "-90.0", message = "Latitude must be between -90 and 90")
-    @DecimalMax(value = "90.0", message = "Latitude must be between -90 and 90")
-    @JsonProperty("latitude")
-    private BigDecimal latitude;
+    public WebhookRequestDto(java.math.BigDecimal lat, java.math.BigDecimal lng) {
+        super(lat, lng);
+    }
 
-    @NotNull(message = "Longitude is required")
-    @DecimalMin(value = "-180.0", message = "Longitude must be between -180 and 180")
-    @DecimalMax(value = "180.0", message = "Longitude must be between -180 and 180")
+    @JsonProperty("lat")
+    @Override
+    public java.math.BigDecimal getLat() {
+        return super.getLat();
+    }
+
+    @JsonProperty("lat")
+    @Override
+    public void setLat(java.math.BigDecimal lat) {
+        super.setLat(lat);
+    }
+
     @JsonProperty("lng")
-    private BigDecimal longitude;
+    @Override
+    public java.math.BigDecimal getLng() {
+        return super.getLng();
+    }
+
+    @JsonProperty("lng")
+    @Override
+    public void setLng(java.math.BigDecimal lng) {
+        super.setLng(lng);
+    }
 }
