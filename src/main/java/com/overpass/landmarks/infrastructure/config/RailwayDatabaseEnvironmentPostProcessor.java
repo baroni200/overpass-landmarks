@@ -2,41 +2,49 @@ package com.overpass.landmarks.infrastructure.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.env.EnvironmentPostProcessor;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.MapPropertySource;
 
 import java.net.URI;
-import java.net.URISyntaxException;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * Database configuration that handles Railway's DATABASE_URL format.
- * Railway provides DATABASE_URL in format: postgresql://user:password@host:port/database
- * This configuration parses it and sets Spring Boot datasource properties.
+ * Environment post-processor that parses Railway's DATABASE_URL environment variable
+ * and converts it to Spring Boot datasource properties before Spring Boot processes them.
+ * 
+ * This runs early in the Spring Boot startup process, before DataSource auto-configuration.
  */
-@Configuration
-public class DatabaseConfig {
+public class RailwayDatabaseEnvironmentPostProcessor implements EnvironmentPostProcessor {
 
-    private static final Logger logger = LoggerFactory.getLogger(DatabaseConfig.class);
+    private static final Logger logger = LoggerFactory.getLogger(RailwayDatabaseEnvironmentPostProcessor.class);
 
-    @Bean
-    @Primary
-    @ConfigurationProperties("spring.datasource")
-    public DataSourceProperties dataSourceProperties() {
-        DataSourceProperties properties = new DataSourceProperties();
-        
+    @Override
+    public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         // Check if DATABASE_URL is set (Railway provides this)
-        String databaseUrl = System.getenv("DATABASE_URL");
+        String databaseUrl = environment.getProperty("DATABASE_URL");
+        if (databaseUrl == null || databaseUrl.isEmpty()) {
+            databaseUrl = System.getenv("DATABASE_URL");
+        }
+
         if (databaseUrl != null && !databaseUrl.isEmpty()) {
             // Check if Spring Boot properties are already set (they take precedence)
-            String springDatasourceUrl = System.getenv("SPRING_DATASOURCE_URL");
+            String springDatasourceUrl = environment.getProperty("SPRING_DATASOURCE_URL");
             if (springDatasourceUrl == null || springDatasourceUrl.isEmpty()) {
                 try {
                     logger.info("Found DATABASE_URL environment variable, parsing Railway connection string");
-                    parseDatabaseUrl(databaseUrl, properties);
-                } catch (URISyntaxException e) {
+                    Map<String, Object> properties = parseDatabaseUrl(databaseUrl);
+                    
+                    // Add properties to environment with high priority
+                    environment.getPropertySources().addFirst(
+                        new MapPropertySource("railwayDatabase", properties)
+                    );
+                    
+                    logger.info("Configured datasource from DATABASE_URL: host={}, database={}", 
+                        properties.get("spring.datasource.url"));
+                } catch (Exception e) {
                     logger.error("Failed to parse DATABASE_URL: {}", databaseUrl, e);
                     // Fall back to default Spring Boot properties
                 }
@@ -44,16 +52,14 @@ public class DatabaseConfig {
                 logger.debug("SPRING_DATASOURCE_URL is set, using it instead of DATABASE_URL");
             }
         } else {
-            logger.debug("DATABASE_URL not found, using SPRING_DATASOURCE_* environment variables");
+            logger.debug("DATABASE_URL not found, using SPRING_DATASOURCE_* environment variables or defaults");
         }
-        
-        return properties;
     }
 
     /**
      * Parse Railway's DATABASE_URL format: postgresql://user:password@host:port/database
      */
-    private void parseDatabaseUrl(String databaseUrl, DataSourceProperties properties) throws URISyntaxException {
+    private Map<String, Object> parseDatabaseUrl(String databaseUrl) throws Exception {
         // Railway's DATABASE_URL format: postgresql://user:password@host:port/database
         URI uri = new URI(databaseUrl);
         
@@ -89,16 +95,19 @@ public class DatabaseConfig {
             jdbcUrl += "?" + query;
         }
         
-        properties.setUrl(jdbcUrl);
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("spring.datasource.url", jdbcUrl);
         if (username != null) {
-            properties.setUsername(username);
+            properties.put("spring.datasource.username", username);
         }
         if (password != null) {
-            properties.setPassword(password);
+            properties.put("spring.datasource.password", password);
         }
         
-        logger.info("Configured datasource from DATABASE_URL: host={}, port={}, database={}, username={}", 
+        logger.info("Parsed DATABASE_URL: host={}, port={}, database={}, username={}", 
             host, port, database, username);
+        
+        return properties;
     }
 }
 

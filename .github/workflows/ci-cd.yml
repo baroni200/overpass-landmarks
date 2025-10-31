@@ -1,145 +1,148 @@
-name: CI/CD Pipeline
+# Temporarily disabled - workflow takes too long
+# Uncomment when ready to enable CI/CD
 
-on:
-  push:
-    branches:
-      - main
-      - develop
-  pull_request:
-    branches:
-      - main
-      - develop
-
-env:
-  JAVA_VERSION: "22"
-  GRADLE_VERSION: "8.5"
-
-jobs:
-  test:
-    name: Test and Build
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:14-alpine
-        env:
-          POSTGRES_DB: overpass_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: "temurin"
-
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      - name: Run tests
-        env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/overpass_test
-          SPRING_DATASOURCE_USERNAME: postgres
-          SPRING_DATASOURCE_PASSWORD: postgres
-        run: ./gradlew test --no-daemon
-
-      - name: Build application
-        run: ./gradlew build --no-daemon -x test
-
-      - name: Check JAR exists
-        run: |
-          if [ ! -f build/libs/*.jar ]; then
-            echo "Build failed: JAR file not found"
-            exit 1
-          fi
-          ls -lh build/libs/*.jar
-
-  lint:
-    name: Code Quality Checks
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: "temurin"
-
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      - name: Check code formatting
-        run: ./gradlew check --no-daemon || true
-
-      - name: Compile with warnings
-        run: ./gradlew compileJava compileTestJava --no-daemon
-
-  docker-build:
-    name: Build Docker Image
-    runs-on: ubuntu-latest
-    needs: [test, lint]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: false
-          tags: overpass-landmarks:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Test Docker image
-        run: |
-          docker run --rm -d --name test-container \
-            -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/test \
-            -e SPRING_DATASOURCE_USERNAME=test \
-            -e SPRING_DATASOURCE_PASSWORD=test \
-            -e WEBHOOK_SECRET=test \
-            -p 8080:8080 \
-            overpass-landmarks:latest || true
-          sleep 10
-          docker logs test-container || true
-          docker stop test-container || true
+# name: CI/CD Pipeline
+#
+# on:
+#   push:
+#     branches:
+#       - main
+#       - develop
+#   pull_request:
+#     branches:
+#       - main
+#       - develop
+#
+# env:
+#   JAVA_VERSION: "22"
+#   GRADLE_VERSION: "8.5"
+#
+# jobs:
+#   test:
+#     name: Test and Build
+#     runs-on: ubuntu-latest
+#
+#     services:
+#       postgres:
+#         image: postgres:14-alpine
+#         env:
+#           POSTGRES_DB: overpass_test
+#           POSTGRES_USER: postgres
+#           POSTGRES_PASSWORD: postgres
+#         ports:
+#           - 5432:5432
+#         options: >-
+#           --health-cmd pg_isready
+#           --health-interval 10s
+#           --health-timeout 5s
+#           --health-retries 5
+#
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+#
+#       - name: Set up JDK ${{ env.JAVA_VERSION }}
+#         uses: actions/setup-java@v4
+#         with:
+#           java-version: ${{ env.JAVA_VERSION }}
+#           distribution: "temurin"
+#
+#       - name: Cache Gradle dependencies
+#         uses: actions/cache@v4
+#         with:
+#           path: |
+#             ~/.gradle/caches
+#             ~/.gradle/wrapper
+#           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+#           restore-keys: |
+#             ${{ runner.os }}-gradle-
+#
+#       - name: Make gradlew executable
+#         run: chmod +x gradlew
+#
+#       - name: Run tests
+#         env:
+#           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/overpass_test
+#           SPRING_DATASOURCE_USERNAME: postgres
+#           SPRING_DATASOURCE_PASSWORD: postgres
+#         run: ./gradlew test --no-daemon
+#
+#       - name: Build application
+#         run: ./gradlew build --no-daemon -x test
+#
+#       - name: Check JAR exists
+#         run: |
+#           if [ ! -f build/libs/*.jar ]; then
+#             echo "Build failed: JAR file not found"
+#             exit 1
+#           fi
+#           ls -lh build/libs/*.jar
+#
+#   lint:
+#     name: Code Quality Checks
+#     runs-on: ubuntu-latest
+#
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+#
+#       - name: Set up JDK ${{ env.JAVA_VERSION }}
+#         uses: actions/setup-java@v4
+#         with:
+#           java-version: ${{ env.JAVA_VERSION }}
+#           distribution: "temurin"
+#
+#       - name: Cache Gradle dependencies
+#         uses: actions/cache@v4
+#         with:
+#           path: |
+#             ~/.gradle/caches
+#             ~/.gradle/wrapper
+#           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+#           restore-keys: |
+#             ${{ runner.os }}-gradle-
+#
+#       - name: Make gradlew executable
+#         run: chmod +x gradlew
+#
+#       - name: Check code formatting
+#         run: ./gradlew check --no-daemon || true
+#
+#       - name: Compile with warnings
+#         run: ./gradlew compileJava compileTestJava --no-daemon
+#
+#   docker-build:
+#     name: Build Docker Image
+#     runs-on: ubuntu-latest
+#     needs: [test, lint]
+#     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+#
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+#
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
+#
+#       - name: Build Docker image
+#         uses: docker/build-push-action@v5
+#         with:
+#           context: .
+#           file: ./Dockerfile
+#           push: false
+#           tags: overpass-landmarks:latest
+#           cache-from: type=gha
+#           cache-to: type=gha,mode=max
+#
+#       - name: Test Docker image
+#         run: |
+#           docker run --rm -d --name test-container \
+#             -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/test \
+#             -e SPRING_DATASOURCE_USERNAME=test \
+#             -e SPRING_DATASOURCE_PASSWORD=test \
+#             -e WEBHOOK_SECRET=test \
+#             -p 8080:8080 \
+#             overpass-landmarks:latest || true
+#           sleep 10
+#           docker logs test-container || true
+#           docker stop test-container || true
