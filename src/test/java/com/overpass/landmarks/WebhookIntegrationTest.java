@@ -43,6 +43,9 @@ class WebhookIntegrationTest {
     @Autowired
     private LandmarkRepository landmarkRepository;
 
+    @Autowired
+    private org.springframework.cache.CacheManager cacheManager;
+
     private static final String WEBHOOK_SECRET = "supersecret";
 
     @Test
@@ -171,6 +174,12 @@ class WebhookIntegrationTest {
 
     @Test
     void testCacheBehavior_FirstGetFromDb_SecondGetFromCache() throws Exception {
+        // Clear cache before test to ensure clean state
+        org.springframework.cache.Cache cache = cacheManager.getCache("landmarks");
+        if (cache != null) {
+            cache.clear();
+        }
+
         // Create a coordinate request with landmarks (use different coordinates to
         // avoid conflict with seed data)
         CoordinateRequest coordinateRequest = new CoordinateRequest(
