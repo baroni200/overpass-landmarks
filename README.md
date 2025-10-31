@@ -93,6 +93,98 @@ This transformation ensures:
 - Database unique constraint prevents duplicate requests
 - If a request with the same transformed key already exists, returns existing result without querying Overpass again
 
+## Deployment
+
+### Railway Deployment
+
+This application is configured for deployment on Railway with Docker.
+
+#### Prerequisites
+
+- Railway account
+- Railway CLI (optional)
+- Docker (for local testing)
+
+#### Environment Variables
+
+Set the following environment variables in Railway:
+
+```bash
+# Database (provided by Railway PostgreSQL addon)
+SPRING_DATASOURCE_URL=jdbc:postgresql://${{RAILWAY_DATABASE_URL}}
+SPRING_DATASOURCE_USERNAME=${{RAILWAY_DATABASE_USER}}
+SPRING_DATASOURCE_PASSWORD=${{RAILWAY_DATABASE_PASSWORD}}
+
+# Application
+PORT=8080
+WEBHOOK_SECRET=<your-secret-key>
+QUERY_RADIUS_METERS=500
+CACHE_TTL_SECONDS=600
+
+# Optional
+LOG_LEVEL=INFO
+```
+
+#### Deploy via Railway CLI
+
+```bash
+# Install Railway CLI
+npm i -g @railway/cli
+
+# Login
+railway login
+
+# Link to project
+railway link
+
+# Deploy
+railway up
+```
+
+#### Deploy via GitHub Actions
+
+The repository includes a GitHub Actions workflow that:
+
+1. Runs tests on every push/PR
+2. Builds Docker image
+3. Deploys to Railway automatically on push to `main` branch
+
+**Setup:**
+
+1. Add Railway secrets to GitHub:
+
+   - `RAILWAY_TOKEN`: Your Railway API token
+   - `RAILWAY_SERVICE_NAME`: Your Railway service name
+   - `RAILWAY_SERVICE_URL`: Your Railway service URL (optional)
+
+2. Push to `main` branch to trigger deployment
+
+#### Local Docker Build
+
+```bash
+# Build Docker image
+docker build -t overpass-landmarks:latest .
+
+# Run locally
+docker run -p 8080:8080 \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/overpass \
+  -e SPRING_DATASOURCE_USERNAME=postgres \
+  -e SPRING_DATASOURCE_PASSWORD=postgres \
+  -e WEBHOOK_SECRET=supersecret \
+  overpass-landmarks:latest
+```
+
+### CI/CD Pipeline
+
+The GitHub Actions workflow (`.github/workflows/ci-cd.yml`) performs:
+
+1. **Test Job**: Runs all tests with PostgreSQL testcontainer
+2. **Lint Job**: Checks code quality and compiles with warnings
+3. **Docker Build Job**: Builds and tests Docker image
+4. **Deploy Job**: Deploys to Railway on push to `main` branch
+
+**Workflow Status**: Check the "Actions" tab in GitHub repository.
+
 ## Setup Instructions
 
 ### Prerequisites

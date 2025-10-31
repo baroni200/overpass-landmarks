@@ -1,0 +1,17 @@
+# Docker ignore file - exclude build artifacts but keep source and build files
+build/
+.gradle/
+*.iml
+.idea/
+.vscode/
+*.log
+.DS_Store
+.git/
+.gitignore
+README.md
+docker-compose.yml
+.env
+.env.local
+.env.test.local
+.cursor/
+*.md
