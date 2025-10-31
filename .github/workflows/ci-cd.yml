@@ -151,7 +151,6 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: production
-      url: ${{ secrets.RAILWAY_SERVICE_URL }}
     
     steps:
       - name: Checkout code
