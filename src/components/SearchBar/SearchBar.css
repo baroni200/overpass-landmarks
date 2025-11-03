@@ -1,0 +1,131 @@
+.search-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 0px;
+  gap: 12px;
+  width: 388px;
+  height: 48px;
+}
+
+.search-input-container {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  padding: 0px;
+  gap: 8px;
+  width: 328px;
+  height: 48px;
+  background: #FFFFFF;
+  border-radius: 8px;
+  flex: 1;
+}
+
+.search-icon {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 12px;
+  gap: 8px;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.search-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.search-input-wrapper {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0px;
+  gap: 16px;
+  flex: 1;
+  height: 48px;
+}
+
+.search-input {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 0px;
+  width: 100%;
+  height: 32px;
+  border: none;
+  outline: none;
+  font-family: 'Noto Sans', sans-serif;
+  font-style: normal;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 125%;
+  color: rgba(15, 15, 15, 0.97);
+  background: transparent;
+}
+
+.search-input::placeholder {
+  color: rgba(15, 15, 15, 0.5);
+}
+
+.search-clear {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 0px;
+  gap: 8px;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+.search-clear svg {
+  width: 24px;
+  height: 24px;
+}
+
+.current-location-button {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  padding: 12px;
+  gap: 4px;
+  width: 48px;
+  height: 48px;
+  background: #FFFFFF;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.2s ease;
+}
+
+.current-location-button:hover {
+  background: #F3F6F9;
+}
+
+.current-location-button svg {
+  width: 24px;
+  height: 24px;
+}
+
+@media (max-width: 768px) {
+  .search-bar {
+    width: 100%;
+    max-width: 388px;
+  }
+
+  .search-input-container {
+    width: 100%;
+  }
+}
+

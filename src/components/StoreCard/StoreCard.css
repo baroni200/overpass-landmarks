@@ -1,0 +1,130 @@
+.store-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0px;
+  gap: 4px;
+  width: 100%;
+  min-height: 80px;
+}
+
+.store-card-bg {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 12px;
+  gap: 12px;
+  width: 100%;
+  min-height: 80px;
+  background: #FFFFFF;
+  border: 1px solid #C7D9EB;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.store-card:hover .store-card-bg {
+  border-color: #0056B8;
+  background: #F3F6F9;
+}
+
+.store-card.selected .store-card-bg {
+  border-color: #0056B8;
+  background: #E6F3FF;
+}
+
+.store-logo {
+  width: 48px;
+  height: 48px;
+  background: #F6F5F4;
+  border-radius: 99px;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.store-logo-placeholder {
+  width: 100%;
+  height: 100%;
+  background: #F6F5F4;
+  border-radius: 99px;
+}
+
+.store-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0px;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.store-name {
+  width: 100%;
+  font-family: 'Noto Sans', sans-serif;
+  font-style: normal;
+  font-weight: 760;
+  font-size: 14px;
+  line-height: 18px;
+  display: flex;
+  align-items: center;
+  letter-spacing: -0.015em;
+  color: rgba(15, 15, 15, 0.97);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.store-address {
+  width: 100%;
+  font-family: 'Noto Sans', sans-serif;
+  font-style: normal;
+  font-weight: 420;
+  font-size: 12px;
+  line-height: 160%;
+  display: -webkit-box;
+  align-items: flex-start;
+  color: rgba(15, 15, 15, 0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+}
+
+.store-phone {
+  width: 100%;
+  font-family: 'Noto Sans', sans-serif;
+  font-style: normal;
+  font-weight: 420;
+  font-size: 12px;
+  line-height: 160%;
+  display: flex;
+  align-items: center;
+  color: rgba(15, 15, 15, 0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.store-geocode {
+  width: auto;
+  height: 19px;
+  font-family: 'Noto Sans', sans-serif;
+  font-style: normal;
+  font-weight: 420;
+  font-size: 12px;
+  line-height: 160%;
+  display: flex;
+  align-items: center;
+  color: rgba(15, 15, 15, 0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

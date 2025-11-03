@@ -34,3 +34,23 @@ Thumbs.db
 /test-results/
 /coverage/
 
+# Node.js / React / Vite
+node_modules/
+dist/
+dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Editor directories and files
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
