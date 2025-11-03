@@ -1,5 +1,5 @@
 // Configuração da API Overpass Landmarks
-const API_BASE_URL = import.meta.env.VITE_LANDMARKS_API_URL || 'http://localhost:8080'
+const API_BASE_URL = import.meta.env.VITE_LANDMARKS_API_URL || 'https://overpass-landmarks-production.up.railway.app'
 
 // Token de autenticação para o webhook (Bearer token)
 const WEBHOOK_TOKEN = import.meta.env.VITE_LANDMARKS_WEBHOOK_TOKEN || 'supersecret'

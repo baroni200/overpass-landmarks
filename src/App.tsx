@@ -1,10 +1,9 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Header from './components/Header/Header'
 import Map from './components/Map/Map'
 import StoreList from './components/StoreList/StoreList'
 import { Store } from './types/store'
 import { Location } from './types/common'
-import { mockStores } from './data/mockStores'
 import { geocodeAddress } from './utils/geocoding'
 import { MAP_CONSTANTS } from './constants/map.constants'
 import { fetchAndGetLandmarks, landmarkToStore } from './services/landmarksService'
@@ -12,35 +11,19 @@ import './styles/App.css'
 
 function App() {
   const [selectedStore, setSelectedStore] = useState<Store | null>(null)
-  const [stores] = useState<Store[]>(mockStores) // Dados mockados
-  const [apiStores, setApiStores] = useState<Store[]>([]) // Landmarks da API
+  const [stores, setStores] = useState<Store[]>([]) // Landmarks da API apenas
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map')
   const [searchValue, setSearchValue] = useState('')
   const [searchLocation, setSearchLocation] = useState<Location | null>(null)
 
-  // Debounce para geocoding
+  // Geocoding simples - sempre faz busca por endereço
   useEffect(() => {
     if (!searchValue.trim()) {
       setSearchLocation(null)
       return
     }
 
-    // Primeiro tenta buscar como texto simples nas lojas
-    const searchLower = searchValue.toLowerCase().trim()
-    const allStoresForSearch = [...stores, ...apiStores]
-    const textMatch = allStoresForSearch.some(store => {
-      const nameMatch = store.name.toLowerCase().includes(searchLower)
-      const addressMatch = store.address.toLowerCase().includes(searchLower)
-      return nameMatch || addressMatch
-    })
-
-    // Se encontrar match, não faz geocoding
-    if (textMatch) {
-      setSearchLocation(null)
-      return
-    }
-
-    // Se não encontrar match e tiver mais de N caracteres, faz geocoding com debounce
+    // Faz geocoding com debounce
     if (searchValue.trim().length >= MAP_CONSTANTS.MIN_SEARCH_LENGTH) {
       const timeoutId = setTimeout(async () => {
         try {
@@ -60,47 +43,20 @@ function App() {
     } else {
       setSearchLocation(null)
     }
-  }, [searchValue, stores, apiStores])
-
-
-  // Combina stores mockadas com API stores
-  const allStores = useMemo(() => {
-    return [...stores, ...apiStores]
-  }, [stores, apiStores])
-
-  // Filtrar lojas baseado apenas na busca por texto
-  const filteredStores = useMemo(() => {
-    if (!searchValue.trim()) {
-      return allStores
-    }
-
-    const searchLower = searchValue.toLowerCase().trim()
-    
-    return allStores.filter(store => {
-      const nameMatch = store.name.toLowerCase().includes(searchLower)
-      const addressMatch = store.address.toLowerCase().includes(searchLower)
-      const geocodeMatch = store.geocode?.toLowerCase().includes(searchLower)
-      const phoneMatch = store.phone?.toLowerCase().includes(searchLower)
-      
-      return nameMatch || addressMatch || geocodeMatch || phoneMatch
-    })
-  }, [allStores, searchValue])
+  }, [searchValue])
 
   // Limpar seleção se a loja selecionada não estiver nos resultados filtrados
   useEffect(() => {
-    if (selectedStore && !filteredStores.find(store => store.id === selectedStore.id)) {
+    if (selectedStore && !stores.find(store => store.id === selectedStore.id)) {
       setSelectedStore(null)
     }
-  }, [filteredStores, selectedStore])
+  }, [stores, selectedStore])
 
   const handleSearch = useCallback((value: string) => {
     setSearchValue(value)
   }, [])
 
   const handleAddClick = async () => {
-    // Implementar ação de adicionar loja
-    console.log('Adicionar loja')
-    
     // Se houver coordenadas de busca, buscar landmarks da API
     if (searchLocation) {
       try {
@@ -112,7 +68,7 @@ function App() {
         
         // Converter landmarks para stores e adicionar
         const newStores = landmarks.map(landmarkToStore)
-        setApiStores(prev => {
+        setStores(prev => {
           // Evitar duplicatas por ID
           const existingIds = new Set(prev.map(s => s.id))
           const uniqueNew = newStores.filter(s => !existingIds.has(s.id))
@@ -147,7 +103,7 @@ function App() {
         {viewMode === 'list' && (
           <div className="list-view-container">
             <StoreList 
-              stores={filteredStores}
+              stores={stores}
               selectedStore={selectedStore}
               onStoreSelect={setSelectedStore}
               isListView={true}
@@ -158,7 +114,7 @@ function App() {
         )}
         {viewMode === 'map' && (
           <StoreList 
-            stores={filteredStores}
+            stores={stores}
             selectedStore={selectedStore}
             onStoreSelect={setSelectedStore}
           />
