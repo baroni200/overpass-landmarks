@@ -1,6 +1,6 @@
 # Overpass Landmarks Service
 
-A Spring Boot service that processes coordinate webhooks, queries the Overpass API for nearby landmarks, and provides cached retrieval of results.
+A Spring Boot service that processes coordinate webhooks, queries the Overpass API for nearby landmarks, and provides cached results.
 
 ## Architecture Overview
 
