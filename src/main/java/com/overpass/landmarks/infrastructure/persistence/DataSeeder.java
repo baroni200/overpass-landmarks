@@ -1,11 +1,11 @@
 package com.overpass.landmarks.infrastructure.persistence;
 
+import com.overpass.landmarks.application.port.out.CoordinateRequestRepository;
+import com.overpass.landmarks.application.port.out.LandmarkRepository;
 import com.overpass.landmarks.domain.model.CoordinateRequest;
 import com.overpass.landmarks.domain.model.Landmark;
 import com.overpass.landmarks.domain.model.OsmType;
 import com.overpass.landmarks.domain.model.RequestStatus;
-import com.overpass.landmarks.domain.repository.CoordinateRequestRepository;
-import com.overpass.landmarks.domain.repository.LandmarkRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -83,4 +83,3 @@ public class DataSeeder {
         };
     }
 }
-

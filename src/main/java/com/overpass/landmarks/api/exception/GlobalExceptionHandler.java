@@ -1,7 +1,7 @@
-package com.overpass.landmarks.presentation.exception;
+package com.overpass.landmarks.api.exception;
 
 import com.overpass.landmarks.application.service.WebhookService;
-import com.overpass.landmarks.infrastructure.external.OverpassClient;
+import com.overpass.landmarks.infrastructure.http.OverpassClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;

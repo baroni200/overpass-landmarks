@@ -16,8 +16,8 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "landmark", indexes = {
-    @Index(name = "idx_landmark_osm", columnList = "osm_type,osm_id", unique = true),
-    @Index(name = "idx_landmark_coord_request", columnList = "coord_request_id")
+        @Index(name = "idx_landmark_osm", columnList = "osm_type,osm_id", unique = true),
+        @Index(name = "idx_landmark_coord_request", columnList = "coord_request_id")
 })
 @EntityListeners(AuditingEntityListener.class)
 @Getter
@@ -58,9 +58,12 @@ public class Landmark {
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+
     // Constructor for creating new landmarks
-    public Landmark(CoordinateRequest coordinateRequest, OsmType osmType, Long osmId, 
-                    java.math.BigDecimal lat, java.math.BigDecimal lng) {
+    public Landmark(CoordinateRequest coordinateRequest, OsmType osmType, Long osmId,
+            java.math.BigDecimal lat, java.math.BigDecimal lng) {
         this.coordinateRequest = coordinateRequest;
         this.osmType = osmType;
         this.osmId = osmId;
@@ -68,4 +71,3 @@ public class Landmark {
         this.lng = lng;
     }
 }
-

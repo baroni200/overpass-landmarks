@@ -1,13 +1,15 @@
 package com.overpass.landmarks.application.service;
 
-import com.overpass.landmarks.application.dto.LandmarkResponseDto;
-import com.overpass.landmarks.application.dto.LandmarksQueryResponseDto;
+import com.overpass.landmarks.api.dto.LandmarkResponseDto;
+import com.overpass.landmarks.api.dto.LandmarksQueryResponseDto;
+import com.overpass.landmarks.application.mapper.LandmarkMapper;
+import com.overpass.landmarks.application.port.in.QueryLandmarksUseCase;
+import com.overpass.landmarks.application.port.out.CoordinateRequestRepository;
+import com.overpass.landmarks.application.port.out.LandmarkRepository;
 import com.overpass.landmarks.domain.model.Coordinates;
 import com.overpass.landmarks.domain.model.Landmark;
 import com.overpass.landmarks.domain.model.TransformedCoordinates;
-import com.overpass.landmarks.domain.repository.CoordinateRequestRepository;
-import com.overpass.landmarks.domain.repository.LandmarkRepository;
-import com.overpass.landmarks.domain.service.CoordinateTransformer;
+import com.overpass.landmarks.domain.policy.CoordinateTransformer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,7 +27,7 @@ import java.util.Optional;
  * Implements cache-first strategy with database fallback.
  */
 @Service
-public class LandmarkQueryService {
+public class LandmarkQueryService implements QueryLandmarksUseCase {
 
     private static final Logger logger = LoggerFactory.getLogger(LandmarkQueryService.class);
 
@@ -33,19 +35,21 @@ public class LandmarkQueryService {
     private final CoordinateRequestRepository coordinateRequestRepository;
     private final LandmarkRepository landmarkRepository;
     private final CacheManager cacheManager;
+    private final LandmarkMapper landmarkMapper;
     private final int queryRadiusMeters;
 
     public LandmarkQueryService(
-        CoordinateTransformer coordinateTransformer,
-        CoordinateRequestRepository coordinateRequestRepository,
-        LandmarkRepository landmarkRepository,
-        CacheManager cacheManager,
-        @Value("${app.overpass.query-radius-meters:500}") int queryRadiusMeters
-    ) {
+            CoordinateTransformer coordinateTransformer,
+            CoordinateRequestRepository coordinateRequestRepository,
+            LandmarkRepository landmarkRepository,
+            CacheManager cacheManager,
+            LandmarkMapper landmarkMapper,
+            @Value("${app.overpass.query-radius-meters:500}") int queryRadiusMeters) {
         this.coordinateTransformer = coordinateTransformer;
         this.coordinateRequestRepository = coordinateRequestRepository;
         this.landmarkRepository = landmarkRepository;
         this.cacheManager = cacheManager;
+        this.landmarkMapper = landmarkMapper;
         this.queryRadiusMeters = queryRadiusMeters;
     }
 
@@ -57,6 +61,7 @@ public class LandmarkQueryService {
      * @param lng Longitude
      * @return Query response with landmarks and source indicator
      */
+    @Override
     @Transactional(readOnly = true)
     public LandmarksQueryResponseDto queryLandmarks(BigDecimal lat, BigDecimal lng) {
         // Step 1: Transform coordinates (same rule as webhook)
@@ -75,8 +80,7 @@ public class LandmarkQueryService {
                 if (cachedValue instanceof List<?> cachedList) {
                     // Type-safe casting with pattern matching (Java 16+)
                     @SuppressWarnings("unchecked")
-                    List<LandmarkResponseDto> cachedLandmarks = 
-                        (List<LandmarkResponseDto>) cachedList;
+                    List<LandmarkResponseDto> cachedLandmarks = (List<LandmarkResponseDto>) cachedList;
                     logger.debug("Cache hit for key: {}", cacheKey);
                     return buildResponse(transformed, cachedLandmarks, "cache");
                 }
@@ -86,11 +90,10 @@ public class LandmarkQueryService {
 
         // Step 3: Cache miss - query database
         Optional<com.overpass.landmarks.domain.model.CoordinateRequest> request = coordinateRequestRepository
-            .findByKeyLatAndKeyLngAndRadiusMeters(
-                transformed.getLat(),
-                transformed.getLng(),
-                queryRadiusMeters
-            );
+                .findByKeyLatAndKeyLngAndRadiusMeters(
+                        transformed.getLat(),
+                        transformed.getLng(),
+                        queryRadiusMeters);
 
         if (request.isEmpty()) {
             logger.debug("No data found in database for key: {}:{}", transformed.getLat(), transformed.getLng());
@@ -100,8 +103,8 @@ public class LandmarkQueryService {
         // Step 4: Load landmarks from database
         List<Landmark> landmarks = landmarkRepository.findByCoordinateRequestId(request.get().getId());
         List<LandmarkResponseDto> landmarkDtos = landmarks.stream()
-            .map(this::toDto)
-            .toList();
+                .map(landmarkMapper::toDto)
+                .toList();
 
         // Step 5: Populate cache for next time
         populateCache(transformed, landmarkDtos, queryRadiusMeters);
@@ -112,7 +115,8 @@ public class LandmarkQueryService {
     /**
      * Populate cache (write-through on GET).
      */
-    private void populateCache(TransformedCoordinates transformed, List<LandmarkResponseDto> landmarks, int queryRadiusMeters) {
+    private void populateCache(TransformedCoordinates transformed, List<LandmarkResponseDto> landmarks,
+            int queryRadiusMeters) {
         Cache cache = cacheManager.getCache("landmarks");
         if (cache != null) {
             String cacheKey = buildCacheKey(transformed);
@@ -129,28 +133,13 @@ public class LandmarkQueryService {
     }
 
     private LandmarksQueryResponseDto buildResponse(
-        TransformedCoordinates transformed,
-        List<LandmarkResponseDto> landmarks,
-        String source
-    ) {
+            TransformedCoordinates transformed,
+            List<LandmarkResponseDto> landmarks,
+            String source) {
         LandmarksQueryResponseDto.KeyDto key = new LandmarksQueryResponseDto.KeyDto(
-            transformed.getLat(),
-            transformed.getLng(),
-            queryRadiusMeters
-        );
+                transformed.getLat(),
+                transformed.getLng(),
+                queryRadiusMeters);
         return new LandmarksQueryResponseDto(key, source, landmarks);
     }
-
-    private LandmarkResponseDto toDto(Landmark landmark) {
-        return new LandmarkResponseDto(
-            landmark.getId(),
-            landmark.getName(),
-            landmark.getOsmType().name(),
-            landmark.getOsmId(),
-            landmark.getLat(),
-            landmark.getLng(),
-            landmark.getTags()
-        );
-    }
 }
-

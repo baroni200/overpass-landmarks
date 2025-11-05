@@ -1,8 +1,8 @@
-package com.overpass.landmarks.presentation.controller;
+package com.overpass.landmarks.api.controller;
 
-import com.overpass.landmarks.application.dto.CoordinatesDto;
-import com.overpass.landmarks.application.dto.LandmarksQueryResponseDto;
-import com.overpass.landmarks.application.service.LandmarkQueryService;
+import com.overpass.landmarks.api.dto.CoordinatesDto;
+import com.overpass.landmarks.api.dto.LandmarksQueryResponseDto;
+import com.overpass.landmarks.application.port.in.QueryLandmarksUseCase;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +21,10 @@ public class LandmarkController {
 
     private static final Logger logger = LoggerFactory.getLogger(LandmarkController.class);
 
-    private final LandmarkQueryService landmarkQueryService;
+    private final QueryLandmarksUseCase queryLandmarksUseCase;
 
-    public LandmarkController(LandmarkQueryService landmarkQueryService) {
-        this.landmarkQueryService = landmarkQueryService;
+    public LandmarkController(QueryLandmarksUseCase queryLandmarksUseCase) {
+        this.queryLandmarksUseCase = queryLandmarksUseCase;
     }
 
     /**
@@ -41,9 +41,10 @@ public class LandmarkController {
             @Valid @ModelAttribute CoordinatesDto coordinates) {
         logger.info("Querying landmarks: lat={}, lng={}", coordinates.getLat(), coordinates.getLng());
 
-        LandmarksQueryResponseDto response = landmarkQueryService.queryLandmarks(
+        LandmarksQueryResponseDto response = queryLandmarksUseCase.queryLandmarks(
                 coordinates.getLat(),
                 coordinates.getLng());
         return ResponseEntity.ok(response);
     }
 }
+

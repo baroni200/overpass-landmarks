@@ -1,4 +1,4 @@
-package com.overpass.landmarks.application.dto;
+package com.overpass.landmarks.api.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
@@ -13,16 +13,13 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class WebhookResponseDto {
+public class LandmarksQueryResponseDto {
 
     @JsonProperty("key")
     private KeyDto key;
 
-    @JsonProperty("count")
-    private Integer count;
-
-    @JsonProperty("radiusMeters")
-    private Integer radiusMeters;
+    @JsonProperty("source")
+    private String source;
 
     @JsonProperty("landmarks")
     private List<LandmarkResponseDto> landmarks;
@@ -37,5 +34,9 @@ public class WebhookResponseDto {
 
         @JsonProperty("lng")
         private BigDecimal lng;
+
+        @JsonProperty("radiusMeters")
+        private Integer radiusMeters;
     }
 }
+

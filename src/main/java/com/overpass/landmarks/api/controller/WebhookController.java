@@ -1,8 +1,8 @@
-package com.overpass.landmarks.presentation.controller;
+package com.overpass.landmarks.api.controller;
 
-import com.overpass.landmarks.application.dto.WebhookRequestDto;
-import com.overpass.landmarks.application.dto.WebhookResponseDto;
-import com.overpass.landmarks.application.service.WebhookService;
+import com.overpass.landmarks.api.dto.WebhookRequestDto;
+import com.overpass.landmarks.api.dto.WebhookResponseDto;
+import com.overpass.landmarks.application.port.in.ProcessWebhookUseCase;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,10 +19,10 @@ public class WebhookController {
 
     private static final Logger logger = LoggerFactory.getLogger(WebhookController.class);
 
-    private final WebhookService webhookService;
+    private final ProcessWebhookUseCase processWebhookUseCase;
 
-    public WebhookController(WebhookService webhookService) {
-        this.webhookService = webhookService;
+    public WebhookController(ProcessWebhookUseCase processWebhookUseCase) {
+        this.processWebhookUseCase = processWebhookUseCase;
     }
 
     /**
@@ -39,7 +39,8 @@ public class WebhookController {
     @PostMapping
     public ResponseEntity<WebhookResponseDto> handleWebhook(@Valid @RequestBody WebhookRequestDto request) {
         logger.info("Received webhook request: lat={}, lng={}", request.getLat(), request.getLng());
-        WebhookResponseDto response = webhookService.processWebhook(request.getLat(), request.getLng());
+        WebhookResponseDto response = processWebhookUseCase.processWebhook(request.getLat(), request.getLng());
         return ResponseEntity.ok(response);
     }
 }
+

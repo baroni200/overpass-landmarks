@@ -1,4 +1,4 @@
-package com.overpass.landmarks.application.dto;
+package com.overpass.landmarks.api.dto;
 
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -30,3 +30,4 @@ public class CoordinatesDto {
     @DecimalMax(value = "180.0", message = "Longitude must be between -180 and 180")
     private BigDecimal lng;
 }
+

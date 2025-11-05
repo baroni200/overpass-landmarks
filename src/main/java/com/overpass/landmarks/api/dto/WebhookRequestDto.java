@@ -1,4 +1,4 @@
-package com.overpass.landmarks.application.dto;
+package com.overpass.landmarks.api.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.EqualsAndHashCode;
@@ -43,3 +43,4 @@ public class WebhookRequestDto extends CoordinatesDto {
         super.setLng(lng);
     }
 }
+

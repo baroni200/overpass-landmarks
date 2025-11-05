@@ -1,0 +1,244 @@
+openapi: 3.0.3
+info:
+  title: Overpass Landmarks API
+  description: |
+    API for querying landmarks near geographic coordinates.
+    Supports webhook-based ingestion and cached query endpoints.
+  version: 1.0.0
+  contact:
+    name: Overpass Landmarks API Support
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: https://api.example.com
+    description: Production server
+
+paths:
+  /webhook:
+    post:
+      summary: Process coordinate webhook
+      description: |
+        Protected endpoint that receives coordinates, queries Overpass API, 
+        persists results, and populates cache.
+        
+        **Idempotency**: If a request with the same transformed key already exists,
+        returns the existing result without querying Overpass again.
+      operationId: processWebhook
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookRequest'
+      responses:
+        '200':
+          description: Webhook processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+        '400':
+          description: Invalid request (validation error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (missing or invalid token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Overpass API error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /landmarks:
+    get:
+      summary: Query landmarks by coordinates
+      description: |
+        Query landmarks using cache-first strategy with database fallback.
+        
+        **Strategy**: Cache-first → DB fallback → populate cache
+      operationId: queryLandmarks
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          description: Latitude (-90 to 90)
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: lng
+          in: query
+          required: true
+          description: Longitude (-180 to 180)
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+      responses:
+        '200':
+          description: Landmarks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LandmarksQueryResponse'
+        '400':
+          description: Invalid request (validation error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Bearer token authentication (use webhook secret as token)
+
+  schemas:
+    WebhookRequest:
+      type: object
+      required:
+        - lat
+        - lng
+      properties:
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: Latitude
+          example: 48.8584
+        lng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          description: Longitude
+          example: 2.2945
+
+    WebhookResponse:
+      type: object
+      properties:
+        key:
+          $ref: '#/components/schemas/CoordinateKey'
+        count:
+          type: integer
+          description: Number of landmarks found
+          example: 5
+        radiusMeters:
+          type: integer
+          description: Query radius in meters
+          example: 500
+        landmarks:
+          type: array
+          items:
+            $ref: '#/components/schemas/LandmarkResponse'
+
+    LandmarksQueryResponse:
+      type: object
+      properties:
+        key:
+          $ref: '#/components/schemas/CoordinateKeyWithRadius'
+        source:
+          type: string
+          enum: [cache, db, none]
+          description: Source of the data (cache, database, or none)
+          example: cache
+        landmarks:
+          type: array
+          items:
+            $ref: '#/components/schemas/LandmarkResponse'
+
+    CoordinateKey:
+      type: object
+      properties:
+        lat:
+          type: number
+          format: double
+          example: 48.8584
+        lng:
+          type: number
+          format: double
+          example: 2.2945
+
+    CoordinateKeyWithRadius:
+      allOf:
+        - $ref: '#/components/schemas/CoordinateKey'
+        - type: object
+          properties:
+            radiusMeters:
+              type: integer
+              example: 500
+
+    LandmarkResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          nullable: true
+          example: "Eiffel Tower"
+        osmType:
+          type: string
+          enum: [way, relation, node]
+          example: way
+        osmId:
+          type: integer
+          format: int64
+          example: 123456
+        lat:
+          type: number
+          format: double
+          example: 48.8584
+        lng:
+          type: number
+          format: double
+          example: 2.2945
+        tags:
+          type: object
+          additionalProperties: true
+          description: OSM tags as key-value pairs
+          example:
+            tourism: attraction
+            name: Eiffel Tower
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error code
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: Human-readable error message
+          example: Validation failed
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+          description: Field-level validation errors (only present for validation errors)
+

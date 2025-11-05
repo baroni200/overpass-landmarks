@@ -58,10 +58,13 @@ management:
 app:
   webhook:
     secret: ${WEBHOOK_SECRET:supersecret}
+    time-frame-seconds: ${WEBHOOK_TIME_FRAME_SECONDS:300}
   overpass:
-    api-url: https://overpass-api.de/api/interpreter
+    api-url: https://overpass-api.de/api
     timeout-seconds: 30
-    query-radius-meters: ${QUERY_RADIUS_METERS:500}
+    query-radius-meters: ${QUERY_RADIUS_METERS:10000}
+    # Cache expiration: refresh data after this many days (default: 60 days = ~2 months)
+    cache-expiration-days: ${CACHE_EXPIRATION_DAYS:60}
 
 logging:
   level:

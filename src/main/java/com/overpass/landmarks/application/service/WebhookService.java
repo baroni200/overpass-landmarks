@@ -1,12 +1,14 @@
 package com.overpass.landmarks.application.service;
 
-import com.overpass.landmarks.application.dto.LandmarkResponseDto;
-import com.overpass.landmarks.application.dto.WebhookResponseDto;
+import com.overpass.landmarks.api.dto.LandmarkResponseDto;
+import com.overpass.landmarks.api.dto.WebhookResponseDto;
+import com.overpass.landmarks.application.mapper.LandmarkMapper;
+import com.overpass.landmarks.application.port.in.ProcessWebhookUseCase;
+import com.overpass.landmarks.application.port.out.CoordinateRequestRepository;
+import com.overpass.landmarks.application.port.out.LandmarkRepository;
 import com.overpass.landmarks.domain.model.*;
-import com.overpass.landmarks.domain.repository.CoordinateRequestRepository;
-import com.overpass.landmarks.domain.repository.LandmarkRepository;
-import com.overpass.landmarks.domain.service.CoordinateTransformer;
-import com.overpass.landmarks.infrastructure.external.OverpassClient;
+import com.overpass.landmarks.domain.policy.CoordinateTransformer;
+import com.overpass.landmarks.infrastructure.http.OverpassClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +17,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,7 +33,7 @@ import java.util.Optional;
  * - Can be upgraded to async if needed for production
  */
 @Service
-public class WebhookService {
+public class WebhookService implements ProcessWebhookUseCase {
 
   private static final Logger logger = LoggerFactory.getLogger(WebhookService.class);
 
@@ -37,19 +41,25 @@ public class WebhookService {
   private final OverpassClient overpassClient;
   private final CoordinateRequestRepository coordinateRequestRepository;
   private final LandmarkRepository landmarkRepository;
+  private final LandmarkMapper landmarkMapper;
   private final int queryRadiusMeters;
+  private final Duration cacheExpirationDuration;
 
   public WebhookService(
       CoordinateTransformer coordinateTransformer,
       OverpassClient overpassClient,
       CoordinateRequestRepository coordinateRequestRepository,
       LandmarkRepository landmarkRepository,
-      @Value("${app.overpass.query-radius-meters:500}") int queryRadiusMeters) {
+      LandmarkMapper landmarkMapper,
+      @Value("${app.overpass.query-radius-meters:500}") int queryRadiusMeters,
+      @Value("${app.overpass.cache-expiration-days:60}") int cacheExpirationDays) {
     this.coordinateTransformer = coordinateTransformer;
     this.overpassClient = overpassClient;
     this.coordinateRequestRepository = coordinateRequestRepository;
     this.landmarkRepository = landmarkRepository;
+    this.landmarkMapper = landmarkMapper;
     this.queryRadiusMeters = queryRadiusMeters;
+    this.cacheExpirationDuration = Duration.ofDays(cacheExpirationDays);
   }
 
   /**
@@ -58,7 +68,12 @@ public class WebhookService {
    * 
    * Idempotency: If a request with the same transformed key already exists,
    * returns the existing result without querying Overpass again.
+   * 
+   * Cache Expiration: If the existing request is older than the configured
+   * expiration
+   * (default: 60 days), the data is refreshed by querying Overpass API again.
    */
+  @Override
   @Transactional
   public WebhookResponseDto processWebhook(BigDecimal lat, BigDecimal lng) {
     // Step 1: Transform coordinates
@@ -67,7 +82,7 @@ public class WebhookService {
 
     logger.info("Processing webhook for coordinates: {} -> {}", coordinates, transformed);
 
-    // Step 2: Check for existing request (idempotency)
+    // Step 2: Check for existing request (idempotency with expiration check)
     Optional<CoordinateRequest> existingRequest = coordinateRequestRepository
         .findByKeyLatAndKeyLngAndRadiusMeters(
             transformed.getLat(),
@@ -75,18 +90,37 @@ public class WebhookService {
             queryRadiusMeters);
 
     if (existingRequest.isPresent()) {
-      logger.info("Found existing request for key: {}:{}, returning cached result",
-          transformed.getLat(), transformed.getLng());
       CoordinateRequest request = existingRequest.get();
-      List<Landmark> landmarks = landmarkRepository.findByCoordinateRequestId(request.getId());
 
-      // Populate cache
-      populateCache(transformed, landmarks, queryRadiusMeters);
+      // Check if request is expired (older than expiration duration)
+      OffsetDateTime expirationTime = request.getRequestedAt().plus(cacheExpirationDuration);
+      boolean isExpired = OffsetDateTime.now().isAfter(expirationTime);
 
-      List<LandmarkResponseDto> landmarkDtos = landmarks.stream()
-          .map(this::toDto)
-          .toList();
-      return buildResponse(transformed, landmarks.size(), queryRadiusMeters, landmarkDtos);
+      if (!isExpired) {
+        logger.info("Found existing request for key: {}:{}, returning cached result (age: {} days)",
+            transformed.getLat(), transformed.getLng(),
+            Duration.between(request.getRequestedAt(), OffsetDateTime.now()).toDays());
+        List<Landmark> landmarks = landmarkRepository.findByCoordinateRequestId(request.getId());
+
+        // Populate cache
+        if (landmarks.size() > 0) {
+          populateCache(transformed, landmarks, queryRadiusMeters);
+
+          List<LandmarkResponseDto> landmarkDtos = landmarks.stream()
+              .map(landmarkMapper::toDto)
+              .toList();
+          return buildResponse(transformed, landmarks.size(), queryRadiusMeters, landmarkDtos);
+        }
+      } else {
+        logger.info(
+            "Found existing request for key: {}:{}, but expired (age: {} days). Refreshing data from Overpass API",
+            transformed.getLat(), transformed.getLng(),
+            Duration.between(request.getRequestedAt(), OffsetDateTime.now()).toDays());
+        // Soft delete old request and landmarks to refresh
+        List<Landmark> oldLandmarks = landmarkRepository.findByCoordinateRequestId(request.getId());
+        oldLandmarks.forEach(landmark -> landmarkRepository.softDelete(landmark));
+        coordinateRequestRepository.softDelete(request);
+      }
     }
 
     // Step 3: Query Overpass API
@@ -149,7 +183,7 @@ public class WebhookService {
     populateCache(transformed, landmarks, queryRadiusMeters);
 
     List<LandmarkResponseDto> landmarkDtos = landmarks.stream()
-        .map(this::toDto)
+        .map(landmarkMapper::toDto)
         .toList();
     return buildResponse(transformed, landmarks.size(), queryRadiusMeters, landmarkDtos);
   }
@@ -161,7 +195,7 @@ public class WebhookService {
   private List<LandmarkResponseDto> populateCache(TransformedCoordinates transformed, List<Landmark> landmarks,
       int queryRadiusMeters) {
     return landmarks.stream()
-        .map(this::toDto)
+        .map(landmarkMapper::toDto)
         .toList();
   }
 
@@ -171,17 +205,6 @@ public class WebhookService {
         transformed.getLat(),
         transformed.getLng());
     return new WebhookResponseDto(key, count, radiusMeters, landmarks);
-  }
-
-  private LandmarkResponseDto toDto(Landmark landmark) {
-    return new LandmarkResponseDto(
-        landmark.getId(),
-        landmark.getName(),
-        landmark.getOsmType().name(),
-        landmark.getOsmId(),
-        landmark.getLat(),
-        landmark.getLng(),
-        landmark.getTags());
   }
 
   /**

@@ -257,7 +257,7 @@ The GitHub Actions workflow (`.github/workflows/ci-cd.yml`) performs:
 Start PostgreSQL using Docker Compose:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 This will start PostgreSQL on port 5432 with:

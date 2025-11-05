@@ -1,8 +1,9 @@
 spring:
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/overpass_test}
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    url: jdbc:tc:postgresql:14-alpine:///overpass_test
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+    username: test
+    password: test
   jpa:
     hibernate:
       ddl-auto: none
@@ -29,4 +30,3 @@ logging:
   level:
     root: WARN
     com.overpass.landmarks: INFO
-

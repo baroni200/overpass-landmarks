@@ -1,4 +1,4 @@
-package com.overpass.landmarks.infrastructure.external;
+package com.overpass.landmarks.infrastructure.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Client for interacting with the Overpass API.
+ * HTTP client for interacting with the Overpass API.
  * Handles query building, HTTP requests, and response parsing.
  */
 @Service
@@ -214,3 +214,4 @@ public class OverpassClient {
         }
     }
 }
+

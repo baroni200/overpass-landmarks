@@ -10,7 +10,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "coordinate_request", indexes = {
-    @Index(name = "idx_coordinate_request_key", columnList = "key_lat,key_lng,radius_m", unique = true)
+        @Index(name = "idx_coordinate_request_key", columnList = "key_lat,key_lng,radius_m", unique = true)
 })
 @Getter
 @Setter
@@ -43,6 +43,9 @@ public class CoordinateRequest {
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+
     // Constructor for creating new coordinate requests
     public CoordinateRequest(java.math.BigDecimal keyLat, java.math.BigDecimal keyLng, Integer radiusMeters) {
         this.keyLat = keyLat;
@@ -55,8 +58,10 @@ public class CoordinateRequest {
     }
 
     /**
-     * Pre-persist callback to ensure timestamps are set if auditing doesn't handle it.
-     * This is a fallback for test environments where auditing may not work correctly.
+     * Pre-persist callback to ensure timestamps are set if auditing doesn't handle
+     * it.
+     * This is a fallback for test environments where auditing may not work
+     * correctly.
      */
     @PrePersist
     protected void onCreate() {
@@ -76,4 +81,3 @@ public class CoordinateRequest {
         updatedAt = OffsetDateTime.now();
     }
 }
-

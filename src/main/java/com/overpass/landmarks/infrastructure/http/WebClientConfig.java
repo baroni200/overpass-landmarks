@@ -1,4 +1,4 @@
-package com.overpass.landmarks.infrastructure.external;
+package com.overpass.landmarks.infrastructure.http;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

@@ -8,6 +8,9 @@ plugins {
 group = "com.overpass"
 version = "1.0.0"
 java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(22)
+    }
     sourceCompatibility = JavaVersion.VERSION_22
     targetCompatibility = JavaVersion.VERSION_22
 }
@@ -48,6 +51,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.testcontainers:postgresql:1.19.8")
     testImplementation("org.testcontainers:junit-jupiter:1.19.8")
+    testImplementation("org.testcontainers:jdbc:1.19.8")
 }
 
 tasks.withType<JavaCompile> {
