@@ -1,0 +1,77 @@
+spring:
+  application:
+    name: overpass-landmarks
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/overpass}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    # Driver class is auto-detected from URL in Spring Boot 3.x
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # Dialect is auto-detected from datasource in Hibernate 6.x
+        format_sql: true
+    show-sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=10000,expireAfterWrite=${CACHE_TTL_SECONDS:600}s
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      groups:
+        readiness:
+          include: readinessState,db
+        liveness:
+          include: livenessState
+  health:
+    db:
+      enabled: true
+    diskspace:
+      enabled: false
+
+app:
+  webhook:
+    secret: ${WEBHOOK_SECRET:supersecret}
+    time-frame-seconds: ${WEBHOOK_TIME_FRAME_SECONDS:300}
+  overpass:
+    api-url: https://overpass-api.de/api
+    timeout-seconds: 30
+    query-radius-meters: ${QUERY_RADIUS_METERS:10000}
+    # Cache expiration: refresh data after this many days (default: 60 days = ~2 months)
+    cache-expiration-days: ${CACHE_EXPIRATION_DAYS:60}
+
+logging:
+  level:
+    root: INFO
+    com.overpass.landmarks: INFO
+    org.springframework.boot: INFO
+    org.springframework.web: INFO
+    org.flywaydb: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

@@ -1,0 +1,5 @@
+org.springframework.boot.env.EnvironmentPostProcessor=\
+com.overpass.landmarks.infrastructure.config.RailwayDatabaseEnvironmentPostProcessor
+org.springframework.context.ApplicationListener=\
+com.overpass.landmarks.infrastructure.config.RailwayDatabaseListener
+
