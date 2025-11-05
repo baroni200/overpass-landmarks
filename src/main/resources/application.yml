@@ -30,6 +30,9 @@ spring:
     caffeine:
       spec: maximumSize=10000,expireAfterWrite=${CACHE_TTL_SECONDS:600}s
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
 server:
   port: ${PORT:8080}
 
@@ -62,6 +65,10 @@ app:
     api-url: https://overpass-api.de/api/interpreter
     timeout-seconds: 30
     query-radius-meters: ${QUERY_RADIUS_METERS:500}
+  kafka:
+    webhook-topic: ${KAFKA_WEBHOOK_TOPIC:webhook-events}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer-group: ${KAFKA_CONSUMER_GROUP:webhook-processor-group}
 
 logging:
   level:

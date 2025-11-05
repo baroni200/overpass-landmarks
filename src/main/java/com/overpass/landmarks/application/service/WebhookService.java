@@ -21,12 +21,11 @@ import java.util.Optional;
 /**
  * Application service orchestrating webhook processing.
  * 
- * Processing Mode: Synchronous
- * Rationale:
- * - Simpler implementation for coding challenge
- * - Immediate feedback to webhook sender
- * - Overpass API typically responds within seconds
- * - Can be upgraded to async if needed for production
+ * Processing Mode: Asynchronous (via Kafka)
+ * This service is invoked by the Kafka consumer to process webhook events.
+ * The webhook endpoint queues requests to Kafka, and this service processes them
+ * asynchronously, transforming coordinates, querying Overpass API, persisting results,
+ * and populating cache.
  */
 @Service
 public class WebhookService {

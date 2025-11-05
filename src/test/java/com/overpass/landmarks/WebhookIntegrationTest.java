@@ -43,7 +43,7 @@ class WebhookIntegrationTest {
     private static final String WEBHOOK_SECRET = "supersecret";
 
     @Test
-    void testWebhook_ValidRequest_Returns200() throws Exception {
+    void testWebhook_ValidRequest_Returns202() throws Exception {
         WebhookRequestDto request = new WebhookRequestDto(
                 new BigDecimal("48.8584"),
                 new BigDecimal("2.2945"));
@@ -52,17 +52,16 @@ class WebhookIntegrationTest {
                 .header("Authorization", "Bearer " + WEBHOOK_SECRET)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.key.lat").value(48.8584))
-                .andExpect(jsonPath("$.key.lng").value(2.2945))
-                .andExpect(jsonPath("$.radiusMeters").value(500))
-                .andExpect(jsonPath("$.count").exists())
-                .andExpect(jsonPath("$.landmarks").isArray())
-                .andExpect(jsonPath("$.landmarks").isNotEmpty())
-                .andExpect(jsonPath("$.landmarks[0].name").exists())
-                .andExpect(jsonPath("$.landmarks[0].lat").exists())
-                .andExpect(jsonPath("$.landmarks[0].lng").exists())
-                .andExpect(jsonPath("$.landmarks[0].tags").exists());
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.eventId").exists());
+        
+        // Verify processing happened by checking database
+        // In test mode, webhook is processed synchronously
+        Thread.sleep(1000); // Give time for processing
+        long count = coordinateRequestRepository.count();
+        assertThat(count).isGreaterThan(0);
     }
 
     @Test
@@ -148,35 +147,31 @@ class WebhookIntegrationTest {
 
         String requestJson = objectMapper.writeValueAsString(request);
 
-        // First call
-        String firstResponse = mockMvc.perform(post("/webhook")
+        // First call - returns acknowledgment
+        mockMvc.perform(post("/webhook")
                 .header("Authorization", "Bearer " + WEBHOOK_SECRET)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.landmarks").isArray())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"));
+        
+        // Wait for processing (in test mode, it's synchronous)
+        Thread.sleep(1000);
 
-        // Second call with same coordinates
-        String secondResponse = mockMvc.perform(post("/webhook")
+        // Second call with same coordinates - should also return acknowledgment
+        mockMvc.perform(post("/webhook")
                 .header("Authorization", "Bearer " + WEBHOOK_SECRET)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestJson))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.landmarks").isArray())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"));
 
-        // Verify only one coordinate request exists
+        // Wait for processing
+        Thread.sleep(1000);
+
+        // Verify only one coordinate request exists (idempotency)
         long count = coordinateRequestRepository.count();
         assertThat(count).isEqualTo(1);
-
-        // Verify both responses contain landmarks
-        assertThat(firstResponse).contains("\"landmarks\"");
-        assertThat(secondResponse).contains("\"landmarks\"");
     }
 
     @Test
