@@ -13,6 +13,8 @@ import com.overpass.landmarks.infrastructure.http.OverpassClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -43,6 +45,7 @@ public class WebhookService implements ProcessWebhookUseCase {
   private final CoordinateRequestRepository coordinateRequestRepository;
   private final LandmarkRepository landmarkRepository;
   private final LandmarkMapper landmarkMapper;
+  private final CacheManager cacheManager;
   private final int queryRadiusMeters;
   private final Duration cacheExpirationDuration;
 
@@ -52,6 +55,7 @@ public class WebhookService implements ProcessWebhookUseCase {
       CoordinateRequestRepository coordinateRequestRepository,
       LandmarkRepository landmarkRepository,
       LandmarkMapper landmarkMapper,
+      CacheManager cacheManager,
       @Value("${app.overpass.query-radius-meters:500}") int queryRadiusMeters,
       @Value("${app.overpass.cache-expiration-days:60}") int cacheExpirationDays) {
     this.coordinateTransformer = coordinateTransformer;
@@ -59,6 +63,7 @@ public class WebhookService implements ProcessWebhookUseCase {
     this.coordinateRequestRepository = coordinateRequestRepository;
     this.landmarkRepository = landmarkRepository;
     this.landmarkMapper = landmarkMapper;
+    this.cacheManager = cacheManager;
     this.queryRadiusMeters = queryRadiusMeters;
     this.cacheExpirationDuration = Duration.ofDays(cacheExpirationDays);
   }
@@ -66,6 +71,8 @@ public class WebhookService implements ProcessWebhookUseCase {
   /**
    * Submit webhook request: creates a pending request and returns ID immediately.
    * Processing happens asynchronously.
+   * 
+   * Caching Strategy: Cache-first → DB check → Skip Overpass API if cache exists
    * 
    * @param lat Latitude
    * @param lng Longitude
@@ -79,7 +86,49 @@ public class WebhookService implements ProcessWebhookUseCase {
 
     logger.info("Submitting webhook for coordinates: {} -> {}", coordinates, transformed);
 
-    // Step 2: Check for existing request (idempotency check)
+    // Step 2: Check cache first
+    String cacheKey = buildCacheKey(transformed);
+    Optional<List<LandmarkResponseDto>> cachedLandmarks = getFromCache(cacheKey);
+
+    if (cachedLandmarks.isPresent()) {
+      logger.debug("Cache hit for key: {}, checking DB for request ID", cacheKey);
+
+      // Cache exists, check DB for coordinate_request to get ID
+      Optional<CoordinateRequest> existingRequest = coordinateRequestRepository
+          .findByKeyLatAndKeyLngAndRadiusMeters(
+              transformed.getLat(),
+              transformed.getLng(),
+              queryRadiusMeters);
+
+      if (existingRequest.isPresent()) {
+        CoordinateRequest request = existingRequest.get();
+
+        // Check if request is expired
+        OffsetDateTime expirationTime = request.getRequestedAt().plus(cacheExpirationDuration);
+        boolean isExpired = OffsetDateTime.now().isAfter(expirationTime);
+
+        if (!isExpired && request.getStatus() != RequestStatus.PENDING) {
+          logger.info("Cache hit for key: {}, returning existing request ID: {} (skipping Overpass API)",
+              cacheKey, request.getId());
+          return new WebhookSubmissionResponseDto(request.getId(), request.getStatus().name());
+        }
+
+        if (isExpired) {
+          logger.info("Cache exists but request expired, will refresh");
+          // Clear cache and continue to refresh
+          evictFromCache(cacheKey);
+          // Soft delete old request and landmarks to refresh
+          List<Landmark> oldLandmarks = landmarkRepository.findByCoordinateRequestId(request.getId());
+          oldLandmarks.forEach(landmark -> landmarkRepository.softDelete(landmark));
+          coordinateRequestRepository.softDelete(request);
+        } else if (request.getStatus() == RequestStatus.PENDING) {
+          logger.info("Cache hit but request still pending, returning existing ID: {}", request.getId());
+          return new WebhookSubmissionResponseDto(request.getId(), RequestStatus.PENDING.name());
+        }
+      }
+    }
+
+    // Step 3: Cache miss or expired - check DB for existing request
     Optional<CoordinateRequest> existingRequest = coordinateRequestRepository
         .findByKeyLatAndKeyLngAndRadiusMeters(
             transformed.getLat(),
@@ -168,9 +217,78 @@ public class WebhookService implements ProcessWebhookUseCase {
           coordinateRequest.getKeyLat(),
           coordinateRequest.getKeyLng());
 
-      // Step 3: Query Overpass API
+      // Step 3: Check cache first before querying Overpass API
+      String cacheKey = buildCacheKey(transformed);
+      Optional<List<LandmarkResponseDto>> cachedLandmarks = getFromCache(cacheKey);
+
       List<Landmark> landmarks;
+      if (cachedLandmarks.isPresent()) {
+        logger.info("Cache hit for key: {}, skipping Overpass API call for request ID: {}",
+            cacheKey, requestId);
+
+        // Cache found - load landmarks from DB (they should already exist)
+        landmarks = landmarkRepository.findByCoordinateRequestId(requestId);
+
+        if (landmarks.isEmpty()) {
+          logger.warn("Cache hit but no landmarks in DB for request ID: {}, will query Overpass API", requestId);
+          // Fall through to query Overpass API
+        } else {
+          // Update status based on landmarks
+          if (landmarks.isEmpty()) {
+            coordinateRequest.setStatus(RequestStatus.EMPTY);
+          } else {
+            coordinateRequest.setStatus(RequestStatus.FOUND);
+          }
+          coordinateRequest = coordinateRequestRepository.save(coordinateRequest);
+
+          // Cache already populated, skip Overpass API call
+          logger.info("Completed async processing for request ID: {}, status: {} (from cache)",
+              requestId, coordinateRequest.getStatus());
+          return;
+        }
+      }
+
+      // Step 4: Cache miss - Check DB for existing landmarks before calling Overpass
+      // API
+      Optional<CoordinateRequest> existingDbRequest = coordinateRequestRepository
+          .findByKeyLatAndKeyLngAndRadiusMeters(
+              transformed.getLat(),
+              transformed.getLng(),
+              queryRadiusMeters);
+
+      if (existingDbRequest.isPresent() && existingDbRequest.get().getStatus() != RequestStatus.PENDING) {
+        CoordinateRequest dbRequest = existingDbRequest.get();
+
+        // Check if request is expired
+        OffsetDateTime expirationTime = dbRequest.getRequestedAt().plus(cacheExpirationDuration);
+        boolean isExpired = OffsetDateTime.now().isAfter(expirationTime);
+
+        if (!isExpired) {
+          // DB has valid data - load landmarks from DB
+          logger.info(
+              "Cache miss but found valid data in DB for key: {}, loading from DB for request ID: {} (skipping Overpass API)",
+              cacheKey, requestId);
+          landmarks = landmarkRepository.findByCoordinateRequestId(dbRequest.getId());
+
+          if (!landmarks.isEmpty()) {
+            // Update current request status and load landmarks
+            coordinateRequest.setStatus(RequestStatus.FOUND);
+            coordinateRequest = coordinateRequestRepository.save(coordinateRequest);
+
+            // Populate cache for next time
+            populateCache(transformed, landmarks, queryRadiusMeters);
+
+            logger.info("Completed async processing for request ID: {}, status: {} (from DB, skipping Overpass API)",
+                requestId, coordinateRequest.getStatus());
+            return;
+          }
+        }
+      }
+
+      // Step 5: Cache miss AND DB miss (or expired) - Query Overpass API
       try {
+        logger.info("Cache miss and DB miss (or expired) for key: {}, querying Overpass API for request ID: {}",
+            cacheKey, requestId);
         List<OverpassClient.OverpassLandmark> overpassLandmarks = overpassClient
             .queryLandmarks(transformed.getLat(), transformed.getLng(), queryRadiusMeters);
 
@@ -185,7 +303,7 @@ public class WebhookService implements ProcessWebhookUseCase {
         coordinateRequest = coordinateRequestRepository.save(coordinateRequest);
         final CoordinateRequest finalCoordinateRequest = coordinateRequest;
 
-        // Step 4: Persist landmarks
+        // Step 6: Persist landmarks
         landmarks = overpassLandmarks.stream()
             .map(overpassLandmark -> {
               Landmark landmark = new Landmark(
@@ -209,7 +327,7 @@ public class WebhookService implements ProcessWebhookUseCase {
         return;
       }
 
-      // Step 5: Write-through cache
+      // Step 7: Write-through cache
       populateCache(transformed, landmarks, queryRadiusMeters);
 
       logger.info("Completed async processing for request ID: {}, status: {}",
@@ -234,6 +352,8 @@ public class WebhookService implements ProcessWebhookUseCase {
   /**
    * Get webhook result by request ID.
    * 
+   * Caching Strategy: Cache-first → DB fallback → populate cache
+   * 
    * @param requestId The request ID
    * @return Webhook response if completed, null if pending or not found
    */
@@ -256,10 +376,27 @@ public class WebhookService implements ProcessWebhookUseCase {
         request.getKeyLat(),
         request.getKeyLng());
 
+    // Step 1: Check cache first
+    String cacheKey = buildCacheKey(transformed);
+    Optional<List<LandmarkResponseDto>> cachedLandmarks = getFromCache(cacheKey);
+
+    if (cachedLandmarks.isPresent()) {
+      logger.debug("Cache hit for key: {} in getWebhookStatus, request ID: {}", cacheKey, requestId);
+      WebhookResponseDto response = buildResponse(transformed, cachedLandmarks.get().size(),
+          request.getRadiusMeters(), cachedLandmarks.get());
+      return Optional.of(response);
+    }
+
+    // Step 2: Cache miss - load from database
+    logger.debug("Cache miss for key: {} in getWebhookStatus, loading from DB, request ID: {}",
+        cacheKey, requestId);
     List<Landmark> landmarks = landmarkRepository.findByCoordinateRequestId(request.getId());
     List<LandmarkResponseDto> landmarkDtos = landmarks.stream()
         .map(landmarkMapper::toDto)
         .toList();
+
+    // Step 3: Populate cache for next time
+    populateCache(transformed, landmarks, request.getRadiusMeters());
 
     WebhookResponseDto response = buildResponse(transformed, landmarks.size(),
         request.getRadiusMeters(), landmarkDtos);
@@ -394,6 +531,43 @@ public class WebhookService implements ProcessWebhookUseCase {
         .map(landmarkMapper::toDto)
         .toList();
     return buildResponse(transformed, landmarks.size(), queryRadiusMeters, landmarkDtos);
+  }
+
+  /**
+   * Build cache key for landmarks.
+   */
+  private String buildCacheKey(TransformedCoordinates transformed) {
+    return transformed.getLat().toString() + ":" + transformed.getLng().toString() + ":" + queryRadiusMeters;
+  }
+
+  /**
+   * Get landmarks from cache.
+   */
+  private Optional<List<LandmarkResponseDto>> getFromCache(String cacheKey) {
+    Cache cache = cacheManager.getCache("landmarks");
+    if (cache != null) {
+      Cache.ValueWrapper wrapper = cache.get(cacheKey);
+      if (wrapper != null) {
+        Object cachedValue = wrapper.get();
+        if (cachedValue instanceof List<?> cachedList) {
+          @SuppressWarnings("unchecked")
+          List<LandmarkResponseDto> cachedLandmarks = (List<LandmarkResponseDto>) cachedList;
+          return Optional.of(cachedLandmarks);
+        }
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * Evict entry from cache.
+   */
+  private void evictFromCache(String cacheKey) {
+    Cache cache = cacheManager.getCache("landmarks");
+    if (cache != null) {
+      cache.evict(cacheKey);
+      logger.debug("Evicted cache entry for key: {}", cacheKey);
+    }
   }
 
   /**
