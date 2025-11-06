@@ -34,6 +34,11 @@ public interface CoordinateRequestRepository {
   CoordinateRequest save(CoordinateRequest coordinateRequest);
 
   /**
+   * Find coordinate request by ID, excluding soft-deleted records.
+   */
+  Optional<CoordinateRequest> findByIdNotDeleted(java.util.UUID id);
+
+  /**
    * Count all coordinate requests.
    */
   long count();
