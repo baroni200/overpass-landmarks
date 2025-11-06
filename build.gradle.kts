@@ -38,6 +38,9 @@ dependencies {
     // HTTP Client (WebClient)
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     
+    // Kafka
+    implementation("org.springframework.kafka:spring-kafka")
+    
     // JSON Processing
     implementation("com.fasterxml.jackson.core:jackson-databind")
     
@@ -49,9 +52,11 @@ dependencies {
     
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.kafka:spring-kafka-test")
     testImplementation("org.testcontainers:postgresql:1.19.8")
     testImplementation("org.testcontainers:junit-jupiter:1.19.8")
     testImplementation("org.testcontainers:jdbc:1.19.8")
+    testImplementation("org.testcontainers:kafka:1.19.8")
 }
 
 tasks.withType<JavaCompile> {

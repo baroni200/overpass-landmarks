@@ -13,9 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -30,7 +30,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Transactional
+@EmbeddedKafka(
+    partitions = 1,
+    topics = {"webhook-processing"}
+)
 class WebhookIntegrationTest {
 
         @Autowired
@@ -68,11 +71,11 @@ class WebhookIntegrationTest {
 
         @Test
         void testWebhook_ValidRequest_Returns202() throws Exception {
-                // Use coordinates that don't exist in seed data to ensure new request is
-                // created
-                WebhookRequestDto request = TestFixtures.webhookRequest(
-                                Coordinates.NEW_YORK_LAT,
-                                Coordinates.NEW_YORK_LNG);
+                // Use unique coordinates for this test to avoid conflicts with other tests
+                // Using coordinates that don't exist in seed data
+                BigDecimal testLat = new BigDecimal("40.7580"); // Different from NEW_YORK to avoid conflicts
+                BigDecimal testLng = new BigDecimal("-73.9855");
+                WebhookRequestDto request = TestFixtures.webhookRequest(testLat, testLng);
 
                 // POST returns 202 ACCEPTED with ID
                 String responseJson = mockMvc.perform(post("/webhook")
@@ -90,14 +93,17 @@ class WebhookIntegrationTest {
                                 WebhookSubmissionResponseDto.class);
                 UUID requestId = submissionResponse.getId();
 
+                // Wait a bit for Kafka message to be sent and consumer to start processing
+                Thread.sleep(500);
+                
                 // Wait for async processing to complete
                 waitForProcessing(requestId, 10);
 
                 // GET returns 200 OK with full response
                 mockMvc.perform(get("/webhook/" + requestId))
                                 .andExpect(status().isOk())
-                                .andExpect(jsonPath("$.key.lat").value(40.7128))
-                                .andExpect(jsonPath("$.key.lng").value(-74.0060))
+                                .andExpect(jsonPath("$.key.lat").value(40.7580))
+                                .andExpect(jsonPath("$.key.lng").value(-73.9855))
                                 .andExpect(jsonPath("$.radiusMeters").value(500))
                                 .andExpect(jsonPath("$.count").exists())
                                 .andExpect(jsonPath("$.landmarks").isArray());
@@ -143,20 +149,35 @@ class WebhookIntegrationTest {
 
         @Test
         void testLandmarks_ValidRequest_Returns200() throws Exception {
-                // First, create a coordinate request (use different coordinates to avoid
-                // conflict with seed data)
-                CoordinateRequest coordinateRequest = TestFixtures.coordinateRequest(
-                                Coordinates.NEW_YORK_LAT,
-                                Coordinates.NEW_YORK_LNG,
-                                Common.DEFAULT_RADIUS_METERS);
-                coordinateRequest = coordinateRequestJpaRepository.saveAndFlush(coordinateRequest);
+                // Use unique coordinates for this test
+                BigDecimal testLat = new BigDecimal("40.7489"); // Different coordinates
+                BigDecimal testLng = new BigDecimal("-73.9680");
+                
+                // Use webhook endpoint to create request via Kafka async processing
+                WebhookRequestDto webhookRequest = TestFixtures.webhookRequest(testLat, testLng);
+                String responseJson = mockMvc.perform(post("/webhook")
+                                .header("Authorization", "Bearer " + Common.WEBHOOK_SECRET)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(webhookRequest)))
+                                .andExpect(status().isAccepted())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString();
+                
+                WebhookSubmissionResponseDto submissionResponse = objectMapper.readValue(responseJson,
+                                WebhookSubmissionResponseDto.class);
+                UUID requestId = submissionResponse.getId();
+                
+                // Wait for async processing to complete
+                Thread.sleep(500);
+                waitForProcessing(requestId, 10);
 
                 mockMvc.perform(get("/landmarks")
-                                .param("lat", Coordinates.NEW_YORK_LAT.toString())
-                                .param("lng", Coordinates.NEW_YORK_LNG.toString()))
+                                .param("lat", testLat.toString())
+                                .param("lng", testLng.toString()))
                                 .andExpect(status().isOk())
-                                .andExpect(jsonPath("$.key.lat").value(40.7128))
-                                .andExpect(jsonPath("$.key.lng").value(-74.0060))
+                                .andExpect(jsonPath("$.key.lat").value(40.7489))
+                                .andExpect(jsonPath("$.key.lng").value(-73.9680))
                                 .andExpect(jsonPath("$.key.radiusMeters").value(500))
                                 .andExpect(jsonPath("$.landmarks").isArray());
         }
@@ -178,10 +199,10 @@ class WebhookIntegrationTest {
 
         @Test
         void testIdempotency_DuplicateWebhook_ReturnsExistingResult() throws Exception {
-                // Use coordinates that don't exist in seed data
-                WebhookRequestDto request = TestFixtures.webhookRequest(
-                                Coordinates.NEW_YORK_LAT,
-                                Coordinates.NEW_YORK_LNG);
+                // Use unique coordinates for this test to avoid conflicts with other tests
+                BigDecimal testLat = new BigDecimal("40.7614"); // Different coordinates
+                BigDecimal testLng = new BigDecimal("-73.9776");
+                WebhookRequestDto request = TestFixtures.webhookRequest(testLat, testLng);
 
                 String requestJson = objectMapper.writeValueAsString(request);
 
@@ -201,10 +222,21 @@ class WebhookIntegrationTest {
                                 WebhookSubmissionResponseDto.class);
                 UUID firstRequestId = firstSubmission.getId();
 
+                // Wait a bit for Kafka message to be sent and consumer to start processing
+                Thread.sleep(500);
+                
                 // Wait for first request to complete
                 waitForProcessing(firstRequestId, 10);
+                
+                // Verify first request completed successfully
+                mockMvc.perform(get("/webhook/" + firstRequestId))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.landmarks").exists());
 
-                // Second call with same coordinates - should return same ID
+                // Additional delay to ensure transaction is fully committed
+                Thread.sleep(300);
+
+                // Second call with same coordinates - should return same ID (idempotency)
                 String secondResponseJson = mockMvc.perform(post("/webhook")
                                 .header("Authorization", "Bearer " + Common.WEBHOOK_SECRET)
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -220,19 +252,12 @@ class WebhookIntegrationTest {
                 UUID secondRequestId = secondSubmission.getId();
 
                 // Verify both requests return the same ID (idempotency)
-                assertThat(secondRequestId).isEqualTo(firstRequestId);
+                assertThat(secondRequestId).isEqualTo(firstRequestId)
+                        .withFailMessage("Second webhook call should return the same ID as first call (idempotency). First ID: %s, Second ID: %s", firstRequestId, secondRequestId);
 
-                // Verify only one coordinate request exists for these coordinates
-                // (Note: count() returns all requests, so we check it's at least 1)
-                long count = coordinateRequestRepository.count();
-                assertThat(count).isGreaterThanOrEqualTo(1);
-
-                // Verify GET returns landmarks for both IDs
+                // Since both IDs are the same, we only need to verify one GET request
+                // If they were different, we'd verify both, but idempotency ensures they're the same
                 mockMvc.perform(get("/webhook/" + firstRequestId))
-                                .andExpect(status().isOk())
-                                .andExpect(jsonPath("$.landmarks").isArray());
-
-                mockMvc.perform(get("/webhook/" + secondRequestId))
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.landmarks").isArray());
         }
@@ -245,18 +270,33 @@ class WebhookIntegrationTest {
                         cache.clear();
                 }
 
-                // Create a coordinate request with landmarks (use different coordinates to
-                // avoid conflict with seed data)
-                CoordinateRequest coordinateRequest = TestFixtures.coordinateRequest(
-                                Coordinates.NEW_YORK_LAT,
-                                Coordinates.NEW_YORK_LNG,
-                                Common.DEFAULT_RADIUS_METERS);
-                coordinateRequest = coordinateRequestJpaRepository.saveAndFlush(coordinateRequest);
+                // Use unique coordinates for this test to avoid conflicts
+                BigDecimal testLat = new BigDecimal("40.7505"); // Different coordinates
+                BigDecimal testLng = new BigDecimal("-73.9934");
+                
+                // Use webhook endpoint to create request via Kafka async processing
+                WebhookRequestDto webhookRequest = TestFixtures.webhookRequest(testLat, testLng);
+                String responseJson = mockMvc.perform(post("/webhook")
+                                .header("Authorization", "Bearer " + Common.WEBHOOK_SECRET)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(webhookRequest)))
+                                .andExpect(status().isAccepted())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString();
+                
+                WebhookSubmissionResponseDto submissionResponse = objectMapper.readValue(responseJson,
+                                WebhookSubmissionResponseDto.class);
+                UUID requestId = submissionResponse.getId();
+                
+                // Wait for async processing to complete
+                Thread.sleep(500);
+                waitForProcessing(requestId, 10);
 
                 // First GET - should return from DB
                 String firstResponse = mockMvc.perform(get("/landmarks")
-                                .param("lat", Coordinates.NEW_YORK_LAT.toString())
-                                .param("lng", Coordinates.NEW_YORK_LNG.toString()))
+                                .param("lat", testLat.toString())
+                                .param("lng", testLng.toString()))
                                 .andExpect(status().isOk())
                                 .andReturn()
                                 .getResponse()
@@ -268,8 +308,8 @@ class WebhookIntegrationTest {
 
                 // Second GET - should return from cache
                 String secondResponse = mockMvc.perform(get("/landmarks")
-                                .param("lat", Coordinates.NEW_YORK_LAT.toString())
-                                .param("lng", Coordinates.NEW_YORK_LNG.toString()))
+                                .param("lat", testLat.toString())
+                                .param("lng", testLng.toString()))
                                 .andExpect(status().isOk())
                                 .andReturn()
                                 .getResponse()

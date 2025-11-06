@@ -30,6 +30,17 @@ spring:
     caffeine:
       spec: maximumSize=10000,expireAfterWrite=${CACHE_TTL_SECONDS:600}s
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: webhook-processor-group
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    producer:
+      acks: all
+      retries: 3
+      enable-idempotence: true
+
 server:
   port: ${PORT:8080}
 
@@ -65,6 +76,9 @@ app:
     query-radius-meters: ${QUERY_RADIUS_METERS:10000}
     # Cache expiration: refresh data after this many days (default: 60 days = ~2 months)
     cache-expiration-days: ${CACHE_EXPIRATION_DAYS:60}
+  kafka:
+    topic:
+      webhook-processing: ${KAFKA_TOPIC_WEBHOOK_PROCESSING:webhook-processing}
 
 logging:
   level:

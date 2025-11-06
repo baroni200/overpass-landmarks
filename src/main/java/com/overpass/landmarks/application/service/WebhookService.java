@@ -10,13 +10,13 @@ import com.overpass.landmarks.application.port.out.LandmarkRepository;
 import com.overpass.landmarks.domain.model.*;
 import com.overpass.landmarks.domain.policy.CoordinateTransformer;
 import com.overpass.landmarks.infrastructure.http.OverpassClient;
+import com.overpass.landmarks.infrastructure.messaging.producer.WebhookProcessingProducer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CachePut;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,9 +30,9 @@ import java.util.UUID;
 /**
  * Application service orchestrating webhook processing.
  * 
- * Processing Mode: Asynchronous
+ * Processing Mode: Asynchronous via Kafka
  * - POST /webhook returns immediately with request ID
- * - Processing happens asynchronously in background
+ * - Processing happens asynchronously via Kafka queue
  * - GET /webhook/{id} retrieves results when ready
  */
 @Service
@@ -46,6 +46,7 @@ public class WebhookService implements ProcessWebhookUseCase {
   private final LandmarkRepository landmarkRepository;
   private final LandmarkMapper landmarkMapper;
   private final CacheManager cacheManager;
+  private final WebhookProcessingProducer webhookProcessingProducer;
   private final int queryRadiusMeters;
   private final Duration cacheExpirationDuration;
 
@@ -56,6 +57,7 @@ public class WebhookService implements ProcessWebhookUseCase {
       LandmarkRepository landmarkRepository,
       LandmarkMapper landmarkMapper,
       CacheManager cacheManager,
+      WebhookProcessingProducer webhookProcessingProducer,
       @Value("${app.overpass.query-radius-meters:500}") int queryRadiusMeters,
       @Value("${app.overpass.cache-expiration-days:60}") int cacheExpirationDays) {
     this.coordinateTransformer = coordinateTransformer;
@@ -64,6 +66,7 @@ public class WebhookService implements ProcessWebhookUseCase {
     this.landmarkRepository = landmarkRepository;
     this.landmarkMapper = landmarkMapper;
     this.cacheManager = cacheManager;
+    this.webhookProcessingProducer = webhookProcessingProducer;
     this.queryRadiusMeters = queryRadiusMeters;
     this.cacheExpirationDuration = Duration.ofDays(cacheExpirationDays);
   }
@@ -177,8 +180,9 @@ public class WebhookService implements ProcessWebhookUseCase {
     logger.info("Created pending request with ID: {} for coordinates: {}",
         pendingRequest.getId(), transformed);
 
-    // Step 4: Process asynchronously
-    processWebhookAsync(pendingRequest.getId(), lat, lng);
+    // Step 5: Send to Kafka queue for async processing
+    webhookProcessingProducer.sendWebhookProcessingMessage(
+        pendingRequest.getId(), lat, lng);
 
     return new WebhookSubmissionResponseDto(pendingRequest.getId(), RequestStatus.PENDING.name());
   }
@@ -187,11 +191,15 @@ public class WebhookService implements ProcessWebhookUseCase {
    * Process webhook request asynchronously: transform coordinates, query
    * Overpass, persist, and cache.
    * 
+   * @deprecated This method is now handled by Kafka consumer
+   *             (WebhookProcessingConsumer).
+   *             Use Kafka producer to send messages instead.
+   * 
    * @param requestId The ID of the pending request to process
    * @param lat       Original latitude
    * @param lng       Original longitude
    */
-  @Async
+  @Deprecated
   @Transactional
   public void processWebhookAsync(UUID requestId, BigDecimal lat, BigDecimal lng) {
     try {

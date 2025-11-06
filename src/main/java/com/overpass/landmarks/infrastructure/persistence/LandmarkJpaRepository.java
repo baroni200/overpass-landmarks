@@ -35,5 +35,15 @@ public interface LandmarkJpaRepository extends JpaRepository<Landmark, UUID>, La
         @Param("keyLng") java.math.BigDecimal keyLng,
         @Param("radiusMeters") Integer radiusMeters
     );
+
+    /**
+     * Find a landmark by OSM type and ID.
+     * Excludes soft-deleted records.
+     */
+    @Query("SELECT l FROM Landmark l WHERE l.osmType = :osmType AND l.osmId = :osmId AND l.deletedAt IS NULL")
+    java.util.Optional<Landmark> findByOsmTypeAndOsmId(
+        @Param("osmType") com.overpass.landmarks.domain.model.OsmType osmType,
+        @Param("osmId") Long osmId
+    );
 }
 
