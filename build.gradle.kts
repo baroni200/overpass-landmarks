@@ -32,8 +32,8 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
     
-    // Cache (Caffeine - in-JVM)
-    implementation("com.github.ben-manes.caffeine:caffeine")
+    // Cache (Redis - distributed)
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
     
     // HTTP Client (WebClient)
     implementation("org.springframework.boot:spring-boot-starter-webflux")

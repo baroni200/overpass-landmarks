@@ -46,8 +46,11 @@ public class WebhookSecurityFilter extends OncePerRequestFilter {
         FilterChain filterChain
     ) throws ServletException, IOException {
         
-        // Only apply to webhook endpoint
-        if (!request.getRequestURI().equals("/webhook")) {
+        // Only apply to POST /webhook endpoint (GET requests don't need auth)
+        String requestUri = request.getRequestURI();
+        String method = request.getMethod();
+        
+        if (!requestUri.equals("/webhook") || !method.equals("POST")) {
             filterChain.doFilter(request, response);
             return;
         }

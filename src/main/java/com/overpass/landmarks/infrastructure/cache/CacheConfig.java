@@ -1,38 +1,54 @@
 package com.overpass.landmarks.infrastructure.cache;
 
-import com.github.benmanes.caffeine.cache.Caffeine;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
-import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
+import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializationContext;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 
 /**
- * Cache configuration using Caffeine (in-JVM cache).
+ * Cache configuration using Redis (distributed cache).
  * 
- * Choice: Caffeine over Redis
- * Rationale:
- * - Simpler setup (no external dependency)
- * - Good performance for single-instance deployments
- * - Zero configuration overhead
- * - Suitable for coding challenge/prototype
+ * Benefits:
+ * - Shared cache across multiple application instances
+ * - Suitable for production multi-instance deployments
+ * - Persistent cache that survives application restarts
+ * - Better for horizontal scaling
  * 
- * Note: For production multi-instance deployments, Redis would be preferred.
+ * Note: This configuration is excluded in test profile to use in-memory cache
+ * instead.
  */
 @Configuration
 @EnableCaching
+@Profile("!test")
 public class CacheConfig {
 
+    @Value("${CACHE_TTL_SECONDS:600}")
+    private long cacheTtlSeconds;
+
     @Bean
-    public CacheManager cacheManager() {
-        CaffeineCacheManager cacheManager = new CaffeineCacheManager("landmarks");
-        cacheManager.setCaffeine(Caffeine.newBuilder()
-            .maximumSize(10000)
-            .expireAfterWrite(600, TimeUnit.SECONDS) // Default TTL, can be overridden via application.yml
-            .recordStats());
-        return cacheManager;
+    public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
+        RedisCacheConfiguration cacheConfig = RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofSeconds(cacheTtlSeconds))
+                .serializeKeysWith(
+                        RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair
+                        .fromSerializer(new GenericJackson2JsonRedisSerializer()))
+                .disableCachingNullValues();
+
+        return RedisCacheManager.builder(redisConnectionFactory)
+                .cacheDefaults(cacheConfig)
+                .withCacheConfiguration("landmarks", cacheConfig)
+                .withCacheConfiguration("coordinateRequests", cacheConfig)
+                .build();
     }
 }
-

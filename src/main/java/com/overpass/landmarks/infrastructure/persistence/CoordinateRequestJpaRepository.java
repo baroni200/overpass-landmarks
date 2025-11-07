@@ -15,7 +15,8 @@ import java.util.UUID;
  * JPA implementation of CoordinateRequestRepository output port.
  */
 @Repository
-public interface CoordinateRequestJpaRepository extends JpaRepository<CoordinateRequest, UUID>, CoordinateRequestRepository {
+public interface CoordinateRequestJpaRepository
+        extends JpaRepository<CoordinateRequest, UUID>, CoordinateRequestRepository {
 
     /**
      * Find coordinate request by transformed key and radius.
@@ -25,10 +26,9 @@ public interface CoordinateRequestJpaRepository extends JpaRepository<Coordinate
     @Override
     @Query("SELECT cr FROM CoordinateRequest cr WHERE cr.keyLat = :keyLat AND cr.keyLng = :keyLng AND cr.radiusMeters = :radiusMeters AND cr.deletedAt IS NULL")
     Optional<CoordinateRequest> findByKeyLatAndKeyLngAndRadiusMeters(
-        @Param("keyLat") BigDecimal keyLat,
-        @Param("keyLng") BigDecimal keyLng,
-        @Param("radiusMeters") Integer radiusMeters
-    );
+            @Param("keyLat") BigDecimal keyLat,
+            @Param("keyLng") BigDecimal keyLng,
+            @Param("radiusMeters") Integer radiusMeters);
 
     /**
      * Check if a coordinate request exists for the given key.
@@ -37,9 +37,13 @@ public interface CoordinateRequestJpaRepository extends JpaRepository<Coordinate
     @Override
     @Query("SELECT COUNT(cr) > 0 FROM CoordinateRequest cr WHERE cr.keyLat = :keyLat AND cr.keyLng = :keyLng AND cr.radiusMeters = :radiusMeters AND cr.deletedAt IS NULL")
     boolean existsByKeyLatAndKeyLngAndRadiusMeters(
-        @Param("keyLat") BigDecimal keyLat,
-        @Param("keyLng") BigDecimal keyLng,
-        @Param("radiusMeters") Integer radiusMeters
-    );
-}
+            @Param("keyLat") BigDecimal keyLat,
+            @Param("keyLng") BigDecimal keyLng,
+            @Param("radiusMeters") Integer radiusMeters);
 
+    /**
+     * Find coordinate request by ID, excluding soft-deleted records.
+     */
+    @Query("SELECT cr FROM CoordinateRequest cr WHERE cr.id = :id AND cr.deletedAt IS NULL")
+    Optional<CoordinateRequest> findByIdNotDeleted(@Param("id") UUID id);
+}
