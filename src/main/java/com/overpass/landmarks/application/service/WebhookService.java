@@ -15,7 +15,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.CachePut;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -91,14 +90,24 @@ public class WebhookService implements ProcessWebhookUseCase {
     Optional<List<LandmarkResponseDto>> cachedLandmarks = getFromCache(cacheKey);
 
     if (cachedLandmarks.isPresent()) {
-      logger.debug("Cache hit for key: {}, checking DB for request ID", cacheKey);
+      logger.debug("Cache hit for key: {}, checking cache for CoordinateRequest", cacheKey);
 
-      // Cache exists, check DB for coordinate_request to get ID
-      Optional<CoordinateRequest> existingRequest = coordinateRequestRepository
-          .findByKeyLatAndKeyLngAndRadiusMeters(
-              transformed.getLat(),
-              transformed.getLng(),
-              queryRadiusMeters);
+      // Cache exists, check CoordinateRequest cache first
+      Optional<CoordinateRequest> existingRequest = getCoordinateRequestFromCache(transformed);
+      
+      if (existingRequest.isEmpty()) {
+        // CoordinateRequest cache miss - query DB
+        existingRequest = coordinateRequestRepository
+            .findByKeyLatAndKeyLngAndRadiusMeters(
+                transformed.getLat(),
+                transformed.getLng(),
+                queryRadiusMeters);
+        
+        // Populate CoordinateRequest cache
+        if (existingRequest.isPresent()) {
+          putCoordinateRequestInCache(transformed, existingRequest.get());
+        }
+      }
 
       if (existingRequest.isPresent()) {
         CoordinateRequest request = existingRequest.get();
@@ -115,8 +124,9 @@ public class WebhookService implements ProcessWebhookUseCase {
 
         if (isExpired) {
           logger.info("Cache exists but request expired, will refresh");
-          // Clear cache and continue to refresh
+          // Clear caches and continue to refresh
           evictFromCache(cacheKey);
+          evictCoordinateRequestFromCache(cacheKey);
           // Soft delete old request and landmarks to refresh
           List<Landmark> oldLandmarks = landmarkRepository.findByCoordinateRequestId(request.getId());
           oldLandmarks.forEach(landmark -> landmarkRepository.softDelete(landmark));
@@ -128,12 +138,22 @@ public class WebhookService implements ProcessWebhookUseCase {
       }
     }
 
-    // Step 3: Cache miss or expired - check DB for existing request
-    Optional<CoordinateRequest> existingRequest = coordinateRequestRepository
-        .findByKeyLatAndKeyLngAndRadiusMeters(
-            transformed.getLat(),
-            transformed.getLng(),
-            queryRadiusMeters);
+    // Step 3: Cache miss or expired - check CoordinateRequest cache first
+    Optional<CoordinateRequest> existingRequest = getCoordinateRequestFromCache(transformed);
+    
+    if (existingRequest.isEmpty()) {
+      // CoordinateRequest cache miss - query DB
+      existingRequest = coordinateRequestRepository
+          .findByKeyLatAndKeyLngAndRadiusMeters(
+              transformed.getLat(),
+              transformed.getLng(),
+              queryRadiusMeters);
+      
+      // Populate CoordinateRequest cache
+      if (existingRequest.isPresent()) {
+        putCoordinateRequestInCache(transformed, existingRequest.get());
+      }
+    }
 
     if (existingRequest.isPresent()) {
       CoordinateRequest request = existingRequest.get();
@@ -158,6 +178,8 @@ public class WebhookService implements ProcessWebhookUseCase {
         List<Landmark> oldLandmarks = landmarkRepository.findByCoordinateRequestId(request.getId());
         oldLandmarks.forEach(landmark -> landmarkRepository.softDelete(landmark));
         coordinateRequestRepository.softDelete(request);
+        // Evict CoordinateRequest cache
+        evictCoordinateRequestFromCache(cacheKey);
       } else {
         // Return existing ID (request is completed)
         logger.info("Found existing completed request for key: {}:{}, returning existing ID: {}",
@@ -166,18 +188,21 @@ public class WebhookService implements ProcessWebhookUseCase {
       }
     }
 
-    // Step 3: Create pending request
+    // Step 4: Create pending request
     CoordinateRequest pendingRequest = new CoordinateRequest(
         transformed.getLat(),
         transformed.getLng(),
         queryRadiusMeters);
     pendingRequest.setStatus(RequestStatus.PENDING);
     pendingRequest = coordinateRequestRepository.save(pendingRequest);
+    
+    // Populate CoordinateRequest cache
+    putCoordinateRequestInCache(transformed, pendingRequest);
 
     logger.info("Created pending request with ID: {} for coordinates: {}",
         pendingRequest.getId(), transformed);
 
-    // Step 4: Process asynchronously
+    // Step 5: Process asynchronously
     processWebhookAsync(pendingRequest.getId(), lat, lng);
 
     return new WebhookSubmissionResponseDto(pendingRequest.getId(), RequestStatus.PENDING.name());
@@ -240,6 +265,9 @@ public class WebhookService implements ProcessWebhookUseCase {
             coordinateRequest.setStatus(RequestStatus.FOUND);
           }
           coordinateRequest = coordinateRequestRepository.save(coordinateRequest);
+          
+          // Update CoordinateRequest cache
+          putCoordinateRequestInCache(transformed, coordinateRequest);
 
           // Cache already populated, skip Overpass API call
           logger.info("Completed async processing for request ID: {}, status: {} (from cache)",
@@ -248,13 +276,22 @@ public class WebhookService implements ProcessWebhookUseCase {
         }
       }
 
-      // Step 4: Cache miss - Check DB for existing landmarks before calling Overpass
-      // API
-      Optional<CoordinateRequest> existingDbRequest = coordinateRequestRepository
-          .findByKeyLatAndKeyLngAndRadiusMeters(
-              transformed.getLat(),
-              transformed.getLng(),
-              queryRadiusMeters);
+      // Step 4: Cache miss - Check CoordinateRequest cache first
+      Optional<CoordinateRequest> existingDbRequest = getCoordinateRequestFromCache(transformed);
+      
+      if (existingDbRequest.isEmpty()) {
+        // CoordinateRequest cache miss - query DB
+        existingDbRequest = coordinateRequestRepository
+            .findByKeyLatAndKeyLngAndRadiusMeters(
+                transformed.getLat(),
+                transformed.getLng(),
+                queryRadiusMeters);
+        
+        // Populate CoordinateRequest cache
+        if (existingDbRequest.isPresent()) {
+          putCoordinateRequestInCache(transformed, existingDbRequest.get());
+        }
+      }
 
       if (existingDbRequest.isPresent() && existingDbRequest.get().getStatus() != RequestStatus.PENDING) {
         CoordinateRequest dbRequest = existingDbRequest.get();
@@ -274,6 +311,9 @@ public class WebhookService implements ProcessWebhookUseCase {
             // Update current request status and load landmarks
             coordinateRequest.setStatus(RequestStatus.FOUND);
             coordinateRequest = coordinateRequestRepository.save(coordinateRequest);
+            
+            // Update CoordinateRequest cache
+            putCoordinateRequestInCache(transformed, coordinateRequest);
 
             // Populate cache for next time
             populateCache(transformed, landmarks, queryRadiusMeters);
@@ -301,6 +341,10 @@ public class WebhookService implements ProcessWebhookUseCase {
         }
 
         coordinateRequest = coordinateRequestRepository.save(coordinateRequest);
+        
+        // Populate CoordinateRequest cache
+        putCoordinateRequestInCache(transformed, coordinateRequest);
+        
         final CoordinateRequest finalCoordinateRequest = coordinateRequest;
 
         // Step 6: Persist landmarks
@@ -390,12 +434,22 @@ public class WebhookService implements ProcessWebhookUseCase {
       return response;
     }
 
-    // Step 3: Cache miss - find or create CoordinateRequest in DB
-    Optional<CoordinateRequest> requestOpt = coordinateRequestRepository
-        .findByKeyLatAndKeyLngAndRadiusMeters(
-            transformed.getLat(),
-            transformed.getLng(),
-            queryRadiusMeters);
+    // Step 3: Cache miss - check CoordinateRequest cache first
+    Optional<CoordinateRequest> requestOpt = getCoordinateRequestFromCache(transformed);
+    
+    if (requestOpt.isEmpty()) {
+      // CoordinateRequest cache miss - query DB
+      requestOpt = coordinateRequestRepository
+          .findByKeyLatAndKeyLngAndRadiusMeters(
+              transformed.getLat(),
+              transformed.getLng(),
+              queryRadiusMeters);
+      
+      // Populate CoordinateRequest cache
+      if (requestOpt.isPresent()) {
+        putCoordinateRequestInCache(transformed, requestOpt.get());
+      }
+    }
 
     List<Landmark> landmarks;
     if (requestOpt.isPresent()) {
@@ -505,12 +559,22 @@ public class WebhookService implements ProcessWebhookUseCase {
 
     logger.info("Processing webhook for coordinates: {} -> {}", coordinates, transformed);
 
-    // Step 2: Check for existing request (idempotency with expiration check)
-    Optional<CoordinateRequest> existingRequest = coordinateRequestRepository
-        .findByKeyLatAndKeyLngAndRadiusMeters(
-            transformed.getLat(),
-            transformed.getLng(),
-            queryRadiusMeters);
+    // Step 2: Check CoordinateRequest cache first
+    Optional<CoordinateRequest> existingRequest = getCoordinateRequestFromCache(transformed);
+    
+    if (existingRequest.isEmpty()) {
+      // CoordinateRequest cache miss - query DB
+      existingRequest = coordinateRequestRepository
+          .findByKeyLatAndKeyLngAndRadiusMeters(
+              transformed.getLat(),
+              transformed.getLng(),
+              queryRadiusMeters);
+      
+      // Populate CoordinateRequest cache
+      if (existingRequest.isPresent()) {
+        putCoordinateRequestInCache(transformed, existingRequest.get());
+      }
+    }
 
     if (existingRequest.isPresent()) {
       CoordinateRequest request = existingRequest.get();
@@ -543,6 +607,8 @@ public class WebhookService implements ProcessWebhookUseCase {
         List<Landmark> oldLandmarks = landmarkRepository.findByCoordinateRequestId(request.getId());
         oldLandmarks.forEach(landmark -> landmarkRepository.softDelete(landmark));
         coordinateRequestRepository.softDelete(request);
+        // Evict CoordinateRequest cache
+        evictCoordinateRequestFromCache(buildCacheKey(transformed));
       }
     }
 
@@ -569,6 +635,10 @@ public class WebhookService implements ProcessWebhookUseCase {
       }
 
       coordinateRequest = coordinateRequestRepository.save(newRequest);
+      
+      // Populate CoordinateRequest cache
+      putCoordinateRequestInCache(transformed, coordinateRequest);
+      
       final CoordinateRequest finalCoordinateRequest = coordinateRequest;
 
       // Step 5: Persist landmarks
@@ -598,6 +668,9 @@ public class WebhookService implements ProcessWebhookUseCase {
       errorRequest.setStatus(RequestStatus.ERROR);
       errorRequest.setErrorMessage(e.getMessage());
       coordinateRequest = coordinateRequestRepository.save(errorRequest);
+      
+      // Populate CoordinateRequest cache (even for errors, to avoid repeated API calls)
+      putCoordinateRequestInCache(transformed, coordinateRequest);
 
       throw new WebhookProcessingException("Failed to query Overpass API", e);
     }
@@ -612,51 +685,129 @@ public class WebhookService implements ProcessWebhookUseCase {
   }
 
   /**
-   * Build cache key for landmarks.
+   * Build cache key for landmarks and coordinate requests (geohash-style).
    */
   private String buildCacheKey(TransformedCoordinates transformed) {
     return transformed.getLat().toString() + ":" + transformed.getLng().toString() + ":" + queryRadiusMeters;
   }
 
   /**
-   * Get landmarks from cache.
+   * Get CoordinateRequest from cache.
+   * Gracefully handles cache unavailability (e.g., Redis connection failures).
    */
-  private Optional<List<LandmarkResponseDto>> getFromCache(String cacheKey) {
-    Cache cache = cacheManager.getCache("landmarks");
-    if (cache != null) {
-      Cache.ValueWrapper wrapper = cache.get(cacheKey);
-      if (wrapper != null) {
-        Object cachedValue = wrapper.get();
-        if (cachedValue instanceof List<?> cachedList) {
-          @SuppressWarnings("unchecked")
-          List<LandmarkResponseDto> cachedLandmarks = (List<LandmarkResponseDto>) cachedList;
-          return Optional.of(cachedLandmarks);
+  private Optional<CoordinateRequest> getCoordinateRequestFromCache(TransformedCoordinates transformed) {
+    try {
+      Cache cache = cacheManager.getCache("coordinateRequests");
+      if (cache != null) {
+        String cacheKey = buildCacheKey(transformed);
+        Cache.ValueWrapper wrapper = cache.get(cacheKey);
+        if (wrapper != null) {
+          Object cachedValue = wrapper.get();
+          if (cachedValue instanceof CoordinateRequest) {
+            logger.debug("CoordinateRequest cache hit for key: {}", cacheKey);
+            return Optional.of((CoordinateRequest) cachedValue);
+          }
         }
       }
+    } catch (Exception e) {
+      logger.warn("Failed to get CoordinateRequest from cache, continuing without cache: {}", e.getMessage());
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * Put CoordinateRequest into cache.
+   * Gracefully handles cache unavailability (e.g., Redis connection failures).
+   */
+  private void putCoordinateRequestInCache(TransformedCoordinates transformed, CoordinateRequest request) {
+    try {
+      Cache cache = cacheManager.getCache("coordinateRequests");
+      if (cache != null) {
+        String cacheKey = buildCacheKey(transformed);
+        cache.put(cacheKey, request);
+        logger.debug("CoordinateRequest cache populated for key: {}", cacheKey);
+      }
+    } catch (Exception e) {
+      logger.warn("Failed to put CoordinateRequest into cache, continuing without cache: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * Evict CoordinateRequest from cache.
+   * Gracefully handles cache unavailability (e.g., Redis connection failures).
+   */
+  private void evictCoordinateRequestFromCache(String cacheKey) {
+    try {
+      Cache cache = cacheManager.getCache("coordinateRequests");
+      if (cache != null) {
+        cache.evict(cacheKey);
+        logger.debug("Evicted CoordinateRequest cache entry for key: {}", cacheKey);
+      }
+    } catch (Exception e) {
+      logger.warn("Failed to evict CoordinateRequest from cache: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * Get landmarks from cache.
+   * Gracefully handles cache unavailability (e.g., Redis connection failures).
+   */
+  private Optional<List<LandmarkResponseDto>> getFromCache(String cacheKey) {
+    try {
+      Cache cache = cacheManager.getCache("landmarks");
+      if (cache != null) {
+        Cache.ValueWrapper wrapper = cache.get(cacheKey);
+        if (wrapper != null) {
+          Object cachedValue = wrapper.get();
+          if (cachedValue instanceof List<?> cachedList) {
+            @SuppressWarnings("unchecked")
+            List<LandmarkResponseDto> cachedLandmarks = (List<LandmarkResponseDto>) cachedList;
+            return Optional.of(cachedLandmarks);
+          }
+        }
+      }
+    } catch (Exception e) {
+      logger.warn("Failed to get landmarks from cache, continuing without cache: {}", e.getMessage());
     }
     return Optional.empty();
   }
 
   /**
    * Evict entry from cache.
+   * Gracefully handles cache unavailability (e.g., Redis connection failures).
    */
   private void evictFromCache(String cacheKey) {
-    Cache cache = cacheManager.getCache("landmarks");
-    if (cache != null) {
-      cache.evict(cacheKey);
-      logger.debug("Evicted cache entry for key: {}", cacheKey);
+    try {
+      Cache cache = cacheManager.getCache("landmarks");
+      if (cache != null) {
+        cache.evict(cacheKey);
+        logger.debug("Evicted cache entry for key: {}", cacheKey);
+      }
+    } catch (Exception e) {
+      logger.warn("Failed to evict landmarks from cache: {}", e.getMessage());
     }
   }
 
   /**
    * Populate cache with landmarks (write-through strategy).
+   * Gracefully handles cache unavailability (e.g., Redis connection failures).
    */
-  @CachePut(value = "landmarks", key = "#transformed.lat.toString() + ':' + #transformed.lng.toString() + ':' + #queryRadiusMeters")
-  private List<LandmarkResponseDto> populateCache(TransformedCoordinates transformed, List<Landmark> landmarks,
+  private void populateCache(TransformedCoordinates transformed, List<Landmark> landmarks,
       int queryRadiusMeters) {
-    return landmarks.stream()
-        .map(landmarkMapper::toDto)
-        .toList();
+    try {
+      List<LandmarkResponseDto> landmarkDtos = landmarks.stream()
+          .map(landmarkMapper::toDto)
+          .toList();
+      
+      Cache cache = cacheManager.getCache("landmarks");
+      if (cache != null && !landmarkDtos.isEmpty()) {
+        String cacheKey = buildCacheKey(transformed);
+        cache.put(cacheKey, landmarkDtos);
+        logger.debug("Cache populated for key: {}", cacheKey);
+      }
+    } catch (Exception e) {
+      logger.warn("Failed to populate landmarks cache, continuing without cache: {}", e.getMessage());
+    }
   }
 
   private WebhookResponseDto buildResponse(TransformedCoordinates transformed, int count, int radiusMeters,

@@ -5,6 +5,7 @@ import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -22,9 +23,13 @@ import java.time.Duration;
  * - Suitable for production multi-instance deployments
  * - Persistent cache that survives application restarts
  * - Better for horizontal scaling
+ * 
+ * Note: This configuration is excluded in test profile to use in-memory cache
+ * instead.
  */
 @Configuration
 @EnableCaching
+@Profile("!test")
 public class CacheConfig {
 
     @Value("${CACHE_TTL_SECONDS:600}")
@@ -33,15 +38,17 @@ public class CacheConfig {
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
         RedisCacheConfiguration cacheConfig = RedisCacheConfiguration.defaultCacheConfig()
-            .entryTtl(Duration.ofSeconds(cacheTtlSeconds))
-            .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
-            .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()))
-            .disableCachingNullValues();
+                .entryTtl(Duration.ofSeconds(cacheTtlSeconds))
+                .serializeKeysWith(
+                        RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair
+                        .fromSerializer(new GenericJackson2JsonRedisSerializer()))
+                .disableCachingNullValues();
 
         return RedisCacheManager.builder(redisConnectionFactory)
-            .cacheDefaults(cacheConfig)
-            .withCacheConfiguration("landmarks", cacheConfig)
-            .build();
+                .cacheDefaults(cacheConfig)
+                .withCacheConfiguration("landmarks", cacheConfig)
+                .withCacheConfiguration("coordinateRequests", cacheConfig)
+                .build();
     }
 }
-

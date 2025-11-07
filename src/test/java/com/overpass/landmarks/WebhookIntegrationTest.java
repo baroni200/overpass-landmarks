@@ -5,13 +5,16 @@ import com.overpass.landmarks.api.dto.WebhookRequestDto;
 import com.overpass.landmarks.api.dto.WebhookSubmissionResponseDto;
 import com.overpass.landmarks.application.port.out.CoordinateRequestRepository;
 import com.overpass.landmarks.domain.model.CoordinateRequest;
+import com.overpass.landmarks.infrastructure.cache.TestCacheConfig;
 import com.overpass.landmarks.infrastructure.persistence.CoordinateRequestJpaRepository;
 import com.overpass.landmarks.module.test.support.TestFixtures;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -30,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Import(TestCacheConfig.class)
 @Transactional
 class WebhookIntegrationTest {
 
@@ -47,6 +51,21 @@ class WebhookIntegrationTest {
 
         @Autowired
         private org.springframework.cache.CacheManager cacheManager;
+
+        /**
+         * Clear caches before each test to ensure test isolation.
+         */
+        @BeforeEach
+        void clearCaches() {
+                org.springframework.cache.Cache landmarksCache = cacheManager.getCache("landmarks");
+                if (landmarksCache != null) {
+                        landmarksCache.clear();
+                }
+                org.springframework.cache.Cache coordinateRequestsCache = cacheManager.getCache("coordinateRequests");
+                if (coordinateRequestsCache != null) {
+                        coordinateRequestsCache.clear();
+                }
+        }
 
         /**
          * Helper method to wait for async processing to complete.
@@ -239,10 +258,14 @@ class WebhookIntegrationTest {
 
         @Test
         void testCacheBehavior_FirstGetFromDb_SecondGetFromCache() throws Exception {
-                // Clear cache before test to ensure clean state
-                org.springframework.cache.Cache cache = cacheManager.getCache("landmarks");
-                if (cache != null) {
-                        cache.clear();
+                // Clear caches before test to ensure clean state
+                org.springframework.cache.Cache landmarksCache = cacheManager.getCache("landmarks");
+                if (landmarksCache != null) {
+                        landmarksCache.clear();
+                }
+                org.springframework.cache.Cache coordinateRequestsCache = cacheManager.getCache("coordinateRequests");
+                if (coordinateRequestsCache != null) {
+                        coordinateRequestsCache.clear();
                 }
 
                 // Create a coordinate request with landmarks (use different coordinates to
