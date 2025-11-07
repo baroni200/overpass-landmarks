@@ -350,12 +350,90 @@ public class WebhookService implements ProcessWebhookUseCase {
   }
 
   /**
+   * Check if a webhook request exists and return its status.
+   * 
+   * @param requestId The request ID
+   * @return RequestStatus if found, empty if not found
+   */
+  @Transactional(readOnly = true)
+  public Optional<RequestStatus> getRequestStatus(UUID requestId) {
+    Optional<CoordinateRequest> requestOpt = coordinateRequestRepository.findByIdNotDeleted(requestId);
+    return requestOpt.map(CoordinateRequest::getStatus);
+  }
+
+  /**
+   * Get webhook result by coordinates.
+   * Finds or creates a CoordinateRequest based on transformed coordinates.
+   * 
+   * Caching Strategy: Cache-first → DB fallback → populate cache
+   * 
+   * @param lat Latitude
+   * @param lng Longitude
+   * @return Webhook response with landmarks
+   */
+  @Transactional(readOnly = true)
+  public WebhookResponseDto getWebhookByCoordinates(BigDecimal lat, BigDecimal lng) {
+    // Step 1: Transform coordinates
+    Coordinates coordinates = new Coordinates(lat, lng);
+    TransformedCoordinates transformed = coordinateTransformer.transform(coordinates);
+
+    logger.info("Querying webhook by coordinates: {} -> {}", coordinates, transformed);
+
+    // Step 2: Check cache first
+    String cacheKey = buildCacheKey(transformed);
+    Optional<List<LandmarkResponseDto>> cachedLandmarks = getFromCache(cacheKey);
+
+    if (cachedLandmarks.isPresent()) {
+      logger.debug("Cache hit for key: {} in getWebhookByCoordinates", cacheKey);
+      WebhookResponseDto response = buildResponse(transformed, cachedLandmarks.get().size(),
+          queryRadiusMeters, cachedLandmarks.get());
+      return response;
+    }
+
+    // Step 3: Cache miss - find or create CoordinateRequest in DB
+    Optional<CoordinateRequest> requestOpt = coordinateRequestRepository
+        .findByKeyLatAndKeyLngAndRadiusMeters(
+            transformed.getLat(),
+            transformed.getLng(),
+            queryRadiusMeters);
+
+    List<Landmark> landmarks;
+    if (requestOpt.isPresent()) {
+      CoordinateRequest request = requestOpt.get();
+      // Load landmarks from database
+      landmarks = landmarkRepository.findByCoordinateRequestId(request.getId());
+      logger.debug("Found existing CoordinateRequest for key: {}:{}, loaded {} landmarks",
+          transformed.getLat(), transformed.getLng(), landmarks.size());
+    } else {
+      // No CoordinateRequest exists yet - return empty response
+      logger.debug("No CoordinateRequest found for key: {}:{}, returning empty response",
+          transformed.getLat(), transformed.getLng());
+      landmarks = List.of();
+    }
+
+    // Step 4: Map to DTOs
+    List<LandmarkResponseDto> landmarkDtos = landmarks.stream()
+        .map(landmarkMapper::toDto)
+        .toList();
+
+    // Step 5: Populate cache for next time
+    if (!landmarks.isEmpty()) {
+      populateCache(transformed, landmarks, queryRadiusMeters);
+    }
+
+    WebhookResponseDto response = buildResponse(transformed, landmarks.size(),
+        queryRadiusMeters, landmarkDtos);
+
+    return response;
+  }
+
+  /**
    * Get webhook result by request ID.
    * 
    * Caching Strategy: Cache-first → DB fallback → populate cache
    * 
    * @param requestId The request ID
-   * @return Webhook response if completed, null if pending or not found
+   * @return Webhook response if completed, empty if pending or not found
    */
   @Transactional(readOnly = true)
   public Optional<WebhookResponseDto> getWebhookStatus(UUID requestId) {

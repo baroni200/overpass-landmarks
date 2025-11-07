@@ -1,5 +1,6 @@
 package com.overpass.landmarks.api.controller;
 
+import com.overpass.landmarks.api.dto.CoordinatesDto;
 import com.overpass.landmarks.api.dto.WebhookRequestDto;
 import com.overpass.landmarks.api.dto.WebhookResponseDto;
 import com.overpass.landmarks.api.dto.WebhookSubmissionResponseDto;
@@ -9,8 +10,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -19,6 +22,7 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/webhook")
+@Validated
 public class WebhookController {
 
     private static final Logger logger = LoggerFactory.getLogger(WebhookController.class);
@@ -49,6 +53,25 @@ public class WebhookController {
     }
 
     /**
+     * GET /webhook?lat=X&lng=Y
+     * 
+     * Retrieves landmarks by coordinates.
+     * Finds or creates a CoordinateRequest based on transformed coordinates.
+     * Allows users to query landmarks directly without POSTing first.
+     * 
+     * @param coordinates Coordinate DTO with validated lat/lng
+     * @return Response with landmarks
+     */
+    @GetMapping
+    public ResponseEntity<WebhookResponseDto> getWebhookByCoordinates(
+            @Valid @ModelAttribute CoordinatesDto coordinates) {
+        logger.info("Querying webhook by coordinates: lat={}, lng={}", coordinates.getLat(), coordinates.getLng());
+        WebhookResponseDto response = webhookService.getWebhookByCoordinates(coordinates.getLat(),
+                coordinates.getLng());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * GET /webhook/{id}
      * 
      * Retrieves the result of a webhook request by ID.
@@ -60,8 +83,23 @@ public class WebhookController {
     @GetMapping("/{id}")
     public ResponseEntity<WebhookResponseDto> getWebhookStatus(@PathVariable UUID id) {
         logger.info("Retrieving webhook status for ID: {}", id);
+
+        // First check if request exists and its status
+        Optional<com.overpass.landmarks.domain.model.RequestStatus> statusOpt = webhookService.getRequestStatus(id);
+
+        if (statusOpt.isEmpty()) {
+            // Request not found
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+
+        if (statusOpt.get() == com.overpass.landmarks.domain.model.RequestStatus.PENDING) {
+            // Request exists but is still pending
+            return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+        }
+
+        // Request exists and is completed - get the full response
         return webhookService.getWebhookStatus(id)
                 .map(response -> ResponseEntity.ok(response))
-                .orElse(ResponseEntity.status(HttpStatus.ACCEPTED).build());
+                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).build());
     }
 }

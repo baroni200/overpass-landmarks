@@ -26,9 +26,18 @@ spring:
     baseline-on-migrate: true
 
   cache:
-    type: caffeine
-    caffeine:
-      spec: maximumSize=10000,expireAfterWrite=${CACHE_TTL_SECONDS:600}s
+    type: redis
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
 
 server:
   port: ${PORT:8080}
